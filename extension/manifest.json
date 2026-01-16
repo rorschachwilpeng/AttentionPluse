@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "AttentionPulse",
+  "version": "1.0.0",
+  "description": "注意力状态可视化 - 让你在信息洪流中，始终知道自己在干嘛",
+  
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  
+  "host_permissions": [
+    "*://*.xiaohongshu.com/*"
+  ],
+  
+  "content_scripts": [
+    {
+      "matches": ["*://*.xiaohongshu.com/*"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  }
+}
+

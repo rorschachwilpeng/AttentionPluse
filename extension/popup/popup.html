@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AttentionPulse</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 标题区域 -->
+    <div class="header">
+      <h1 class="title">AttentionPulse</h1>
+      <p class="subtitle">注意力波动图</p>
+    </div>
+    
+    <!-- 功能选项区域 -->
+    <div class="options">
+      <!-- 主开关 -->
+      <div class="option-item">
+        <div class="option-label">
+          <span class="label-zh">启用 AttentionPulse</span>
+          <span class="label-en">Enable AttentionPulse</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="enableToggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      
+      <!-- Pulse 位置选择 -->
+      <div class="option-item">
+        <div class="option-label">
+          <span class="label-zh">Pulse 位置</span>
+          <span class="label-en">Pulse Position</span>
+        </div>
+        <select id="positionSelect" class="select-input">
+          <option value="bottom-right">右下角</option>
+          <option value="bottom-left">左下角</option>
+          <option value="top-right">右上角</option>
+          <option value="top-left">左上角</option>
+        </select>
+      </div>
+      
+      <!-- Pulse 大小调节 -->
+      <div class="option-item">
+        <div class="option-label">
+          <span class="label-zh">Pulse 大小</span>
+          <span class="label-en">Pulse Size</span>
+        </div>
+        <select id="sizeSelect" class="select-input">
+          <option value="small">小</option>
+          <option value="medium" selected>中</option>
+          <option value="large">大</option>
+        </select>
+      </div>
+      
+      <!-- 调试信息开关 -->
+      <div class="option-item">
+        <div class="option-label">
+          <span class="label-zh">显示调试信息</span>
+          <span class="label-en">Show Debug Info</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="debugToggle">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+    
+    <!-- 版权信息 -->
+    <div class="footer">
+      <p>© 2024 AttentionPulse</p>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
+
