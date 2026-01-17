@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xixi SVG Widget 演示</title>
+  <link rel="stylesheet" href="xixi-svg-styles.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    
+    .demo-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    
+    .widget-container {
+      position: relative;
+      width: 200px;
+      height: 200px;
+      margin: 40px auto;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      border: 2px dashed rgba(255, 255, 255, 0.3);
+    }
+    
+    .controls {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 40px;
+    }
+    
+    .control-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      color: white;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      outline: none;
+      -webkit-appearance: none;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    input[type="range"]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: white;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      border: none;
+    }
+    
+    .value-display {
+      color: white;
+      font-size: 14px;
+      margin-top: 8px;
+      text-align: center;
+    }
+    
+    .info {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 20px;
+      color: white;
+    }
+    
+    .info h3 {
+      margin-top: 0;
+    }
+    
+    .info ul {
+      line-height: 1.8;
+    }
+    
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+    
+    .status.focused {
+      background: rgba(72, 187, 120, 0.3);
+      color: #48bb78;
+    }
+    
+    .status.distracted {
+      background: rgba(237, 137, 54, 0.3);
+      color: #ed8936;
+    }
+  </style>
+</head>
+<body>
+  <div class="demo-container">
+    <h1>🐙 Xixi SVG Widget 演示</h1>
+    
+    <div class="widget-container" id="widget-container">
+      <!-- Xixi widget 将在这里渲染 -->
+    </div>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label for="d-value">注意力扰动指数 (D): <span id="d-display">0.40</span></label>
+        <input type="range" id="d-value" min="0" max="1" step="0.01" value="0.4">
+        <div class="value-display">
+          状态: <span id="status-text">中等</span>
+          <span class="status focused" id="status-badge">专注</span>
+        </div>
+      </div>
+      
+      <div class="control-group">
+        <label>快速测试:</label>
+        <button onclick="setDValue(0.0)" style="margin: 5px; padding: 8px 16px; border-radius: 6px; border: none; background: rgba(72, 187, 120, 0.3); color: white; cursor: pointer;">D = 0 (专注)</button>
+        <button onclick="setDValue(0.5)" style="margin: 5px; padding: 8px 16px; border-radius: 6px; border: none; background: rgba(102, 126, 234, 0.3); color: white; cursor: pointer;">D = 0.5 (中等)</button>
+        <button onclick="setDValue(1.0)" style="margin: 5px; padding: 8px 16px; border-radius: 6px; border: none; background: rgba(237, 137, 54, 0.3); color: white; cursor: pointer;">D = 1.0 (分散)</button>
+      </div>
+    </div>
+    
+    <div class="info">
+      <h3>✨ 特性演示</h3>
+      <ul>
+        <li><strong>连续变化:</strong> 所有属性（大小、透明度、光泽）都通过 CSS transition 平滑过渡</li>
+        <li><strong>动态动画:</strong> 触手摆动、身体浮动、呼吸效果根据 D 值动态调整</li>
+        <li><strong>视觉反馈:</strong> D=0 时清澈透明有光泽，D=1 时浑浊不透明无光泽</li>
+        <li><strong>性能优化:</strong> 使用 CSS 变量和浏览器原生动画，GPU 加速</li>
+      </ul>
+      
+      <h3>🎨 视觉效果</h3>
+      <ul>
+        <li><strong>透明度:</strong> D=0 → 0.9 (透明), D=1 → 0.5 (不透明)</li>
+        <li><strong>光泽强度:</strong> D=0 → 1.0 (强), D=1 → 0.2 (弱)</li>
+        <li><strong>颜色亮度:</strong> D=0 → 1.0 (亮), D=1 → 0.7 (暗)</li>
+        <li><strong>模糊程度:</strong> D=0 → 0px, D=1 → 2px</li>
+      </ul>
+    </div>
+  </div>
+
+  <script src="xixi-svg-example.js"></script>
+  <script>
+    // 创建 Xixi widget
+    let xixiWidget;
+    
+    window.addEventListener('DOMContentLoaded', () => {
+      const container = document.getElementById('widget-container');
+      xixiWidget = new XixiSVGWidget(container, {
+        sizeMin: 80,
+        sizeMax: 180,
+        opacityMin: 0.6,
+        opacityMax: 1.0
+      });
+      
+      // 设置初始 D 值
+      xixiWidget.setTurbulence(0.4);
+      
+      // 绑定滑块
+      const slider = document.getElementById('d-value');
+      slider.addEventListener('input', (e) => {
+        const value = parseFloat(e.target.value);
+        setDValue(value);
+      });
+    });
+    
+    function setDValue(value) {
+      if (!xixiWidget) return;
+      
+      xixiWidget.setTurbulence(value);
+      
+      // 更新显示
+      document.getElementById('d-display').textContent = value.toFixed(2);
+      
+      // 更新状态
+      const statusText = document.getElementById('status-text');
+      const statusBadge = document.getElementById('status-badge');
+      
+      if (value < 0.3) {
+        statusText.textContent = '专注';
+        statusBadge.textContent = '专注';
+        statusBadge.className = 'status focused';
+      } else if (value > 0.7) {
+        statusText.textContent = '分散';
+        statusBadge.textContent = '分散';
+        statusBadge.className = 'status distracted';
+      } else {
+        statusText.textContent = '中等';
+        statusBadge.textContent = '中等';
+        statusBadge.className = 'status';
+      }
+    }
+    
+    // 自动演示
+    let demoIndex = 0;
+    const demoValues = [0.0, 0.3, 0.6, 1.0, 0.4];
+    
+    function autoDemo() {
+      if (demoIndex < demoValues.length) {
+        setDValue(demoValues[demoIndex]);
+        demoIndex++;
+        setTimeout(autoDemo, 3000);
+      } else {
+        demoIndex = 0;
+        setTimeout(autoDemo, 2000);
+      }
+    }
+    
+    // 取消注释以启用自动演示
+    // setTimeout(autoDemo, 2000);
+  </script>
+</body>
+</html>
+

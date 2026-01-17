@@ -22,7 +22,9 @@
     enabled: true,
     position: 'bottom-right',
     size: 'medium',
-    debug: false
+    debug: false,
+    xixiEnabled: true,  // 默认启用 Xixi widget
+    xixiUseEngineData: true  // 默认使用 engine 数据
   };
 
   // 3. 实例化核心类
