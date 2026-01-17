@@ -16,7 +16,11 @@
   "content_scripts": [
     {
       "matches": ["*://*.xiaohongshu.com/*"],
-      "js": ["content/content.js"],
+      "js": [
+        "content/contentExtractor.js",
+        "content/contentTagger.js",
+        "content/content.js"
+      ],
       "run_at": "document_idle",
       "all_frames": false
     }
