@@ -13,6 +13,8 @@ const enableToggle = document.getElementById('enableToggle');
 const positionSelect = document.getElementById('positionSelect');
 const sizeSelect = document.getElementById('sizeSelect');
 const debugToggle = document.getElementById('debugToggle');
+const exportJournalBtn = document.getElementById('exportJournalBtn');
+const exportJSONBtn = document.getElementById('exportJSONBtn');
 
 // 初始化：从 storage 加载设置
 async function loadSettings() {
@@ -81,6 +83,41 @@ enableToggle.addEventListener('change', saveSettings);
 positionSelect.addEventListener('change', saveSettings);
 sizeSelect.addEventListener('change', saveSettings);
 debugToggle.addEventListener('change', saveSettings);
+
+// 数据导出事件
+exportJournalBtn.addEventListener('click', () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]) {
+      chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: () => {
+          if (window.exportAttentionJournal) {
+            window.exportAttentionJournal();
+          } else {
+            alert('AttentionPulse 尚未在当前页面加载，或此页面不支持该功能。');
+          }
+        }
+      });
+    }
+  });
+});
+
+exportJSONBtn.addEventListener('click', () => {
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]) {
+      chrome.scripting.executeScript({
+        target: { tabId: tabs[0].id },
+        func: () => {
+          if (window.exportAttentionPulseData) {
+            window.exportAttentionPulseData(100); // 导出最近100条
+          } else {
+            alert('AttentionPulse 尚未在当前页面加载。');
+          }
+        }
+      });
+    }
+  });
+});
 
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', loadSettings);

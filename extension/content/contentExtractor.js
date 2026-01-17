@@ -13,26 +13,46 @@ class ContentExtractor {
    * @returns {Object} 包含标题、URL、文本内容等信息
    */
   extract() {
+    console.log('[AttentionPulse:Extractor] extract() 方法开始执行...');
     const now = Date.now();
-    if (now - this.lastExtractTime < this.extractThrottle && this.currentContent) {
-      return this.currentContent; // 返回缓存
-    }
     this.lastExtractTime = now;
 
-    // 提取可见内容（这是最重要的，用于标签判断）
-    const visibleContent = this.extractVisibleContent();
+    // 1. 检测页面类型
+    const pageType = this.detectPageType();
+    console.log(`[AttentionPulse:Extractor] 检测到页面类型: ${pageType}`);
+    const title = this.getPreciseTitle(pageType);
+    
+    // 调试输出：在进入详情页时打印获取到的标题
+    if (pageType === 'detail') {
+      console.log(`[AttentionPulse:Extractor] 📖 探测到笔记详情页, Title: "${title}"`);
+    } else {
+      console.log(`[AttentionPulse:Extractor] 非详情页, 仅抓取基础信息. Title: "${title}"`);
+    }
+    
+    // 2. 只有在详情页时才进行深度提取，否则只提取基础信息
+    let visibleContent = {
+        viewport: null,
+        elementCount: 0,
+        text: '',
+        cards: []
+    };
+    
+    // 如果是详情页，尝试提取一下内容
+    if (pageType === 'detail') {
+       visibleContent = this.extractVisibleContent(pageType);
+    }
     
     const content = {
       url: window.location.href,
-      title: document.title,
+      title: title,
       timestamp: now,
       // 基础信息
-      pageType: this.detectPageType(),
-      // 文本内容（整个页面，用于备用）
-      textContent: this.extractTextContent(),
+      pageType: pageType,
+      // 文本内容：详情页进行精准抓取
+      textContent: this.extractTextContent(pageType),
       // 当前可见内容（视口内）- 这是主要使用的
       visibleContent: visibleContent,
-      // 内容结构信息
+      // 内容结构信息（如果不必要可简化）
       structure: this.extractStructure(),
       // 滚动信息
       scrollInfo: this.getScrollInfo()
@@ -40,6 +60,38 @@ class ContentExtractor {
 
     this.currentContent = content;
     return content;
+  }
+
+  /**
+   * 根据页面类型获取更精准的标题
+   */
+  getPreciseTitle(pageType) {
+    if (pageType === 'detail') {
+      // 针对小红书详情页的标题选择器
+      const detailTitleSelectors = [
+        '.note-content .detail-title', // 用户指定的精准选择器
+        '.note-content [class*="title"]',
+        '[class*="note-detail"] [class*="title"]',
+        '[class*="detail-title"]',
+        'h1',
+        '.title'
+      ];
+      
+      for (const selector of detailTitleSelectors) {
+        const el = document.querySelector(selector);
+        if (el && el.innerText.trim().length > 0) {
+          return el.innerText.trim();
+        }
+      }
+      
+      // 如果 DOM 中没找到，尝试从点击过的卡片缓存中获取
+      if (window.clickedCardContent && window.clickedCardContent.title) {
+        return window.clickedCardContent.title;
+      }
+    }
+    
+    const docTitle = document.title || '';
+    return docTitle.replace(' - 小红书', '').replace(' | 小红书', '').trim() || '小红书';
   }
 
   /**
@@ -67,27 +119,87 @@ class ContentExtractor {
 
   /**
    * 提取页面文本内容
+   * @param {string} pageType - 页面类型，用于针对性精准提取
    */
-  extractTextContent() {
-    // 移除脚本和样式标签
-    const clone = document.cloneNode(true);
-    const scripts = clone.querySelectorAll('script, style, noscript');
-    scripts.forEach(el => el.remove());
-
-    // 获取主要文本内容
-    const bodyText = clone.body ? clone.body.innerText || '' : '';
+  extractTextContent(pageType) {
+    // 过滤掉已知的干扰元素：登录弹窗、遮罩层、蒙层等
+    const blacklistedSelectors = [
+      '.login-container',
+      '.login-mask',
+      '.v-modal',
+      '.login-guide-container',
+      '[class*="login"]',
+      '.mask'
+    ];
     
-    // 清理文本：移除多余空白
-    return bodyText
-      .replace(/\s+/g, ' ')
-      .trim()
-      .substring(0, 5000); // 限制长度
+    // 如果这些干扰元素遮挡了大部分屏幕，我们认为还没有进入真正的正文模式
+    const checkOverlay = () => {
+      for (const s of blacklistedSelectors) {
+        const el = document.querySelector(s);
+        if (el && el.offsetHeight > window.innerHeight * 0.5) return true;
+      }
+      return false;
+    };
+
+    if (checkOverlay()) {
+      console.log('[AttentionPulse:Extractor] 检测到登录弹窗或遮罩，拒绝提取。');
+      return '';
+    }
+
+    // 1. 如果是详情页，优先使用精准的选择器
+    if (pageType === 'detail') {
+      const detailSelectors = [
+        '.note-content .desc',    // 正文描述
+        '.note-content .note-text', // 用户提到的可能的选择器
+        '.note-content',          // 包含标题和正文的内容区
+        '.note-detail-container', // 整个笔记详情容器
+        'article'                 // 通用的文章标签
+      ];
+
+      for (const selector of detailSelectors) {
+        const el = document.querySelector(selector);
+        // 降低字符限制：即使只有几个字（比如只有标签），只要是出现在精准区域的，我们也认为是对的
+        if (el && el.innerText.trim().length > 0) {
+          // 只抓取该元素内的文本
+          return el.innerText.trim()
+            .replace(/\s+/g, ' ')
+            .substring(0, 5000);
+        }
+      }
+      
+      // 如果上述精准选择器都没找到（可能变了 DOM 结构），但仍是 detail 页，
+      // 我们限制只在主内容区内找，而不是整个 body
+      const mainContent = document.querySelector('main') || document.querySelector('#app');
+      if (mainContent) {
+          return mainContent.innerText.trim().replace(/\s+/g, ' ').substring(0, 5000);
+      }
+    }
+
+    // 2. 后备方案：对于信息流页面，使用清理后的 body 提取
+    try {
+      // 移除脚本和样式标签（在克隆体上操作，不影响原页面）
+      const clone = document.body ? document.body.cloneNode(true) : null;
+      if (!clone) return '';
+
+      const scripts = clone.querySelectorAll('script, style, noscript, nav, header, footer');
+      scripts.forEach(el => el.remove());
+
+      // 获取清理后的文本
+      return clone.innerText
+        .replace(/\s+/g, ' ')
+        .trim()
+        .substring(0, 5000);
+    } catch (e) {
+      console.warn('[AttentionPulse:Extractor] 提取文本失败:', e);
+      return '';
+    }
   }
 
   /**
    * 提取当前可见区域的内容
+   * @param {string} pageType - 页面类型
    */
-  extractVisibleContent() {
+  extractVisibleContent(pageType) {
     const viewport = {
       top: window.scrollY,
       left: window.scrollX,
@@ -97,8 +209,16 @@ class ContentExtractor {
       right: window.scrollX + window.innerWidth
     };
 
+    // 针对性根节点选择：如果是详情页，只在该详情容器内寻找元素
+    let searchRoot = document.body;
+    if (pageType === 'detail') {
+      searchRoot = document.querySelector('.note-content') || 
+                   document.querySelector('.note-detail-container') || 
+                   document.body;
+    }
+
     // 获取视口内的元素
-    const visibleElements = this.getVisibleElements(viewport);
+    const visibleElements = this.getVisibleElements(viewport, searchRoot);
     
     return {
       viewport,
@@ -112,10 +232,12 @@ class ContentExtractor {
   /**
    * 获取视口内的可见元素
    */
-  getVisibleElements(viewport) {
+  getVisibleElements(viewport, root = document.body) {
     const elements = [];
+    if (!root) return elements;
+
     const walker = document.createTreeWalker(
-      document.body,
+      root,
       NodeFilter.SHOW_ELEMENT,
       {
         acceptNode: (node) => {
@@ -324,10 +446,14 @@ class ContentExtractor {
   }
 
   /**
-   * 获取当前内容（带缓存）
+   * 获取当前内容（带缓存和 URL 校验）
    */
   getCurrentContent() {
-    return this.currentContent || this.extract();
+    // 如果没有数据，或者数据对应的 URL 和当前不一致，强制重新提取
+    if (!this.currentContent || this.currentContent.url !== window.location.href) {
+      return this.extract();
+    }
+    return this.currentContent;
   }
 
   /**

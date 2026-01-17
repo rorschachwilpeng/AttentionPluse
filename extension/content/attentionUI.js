@@ -17,6 +17,13 @@ class AttentionUI {
     this.colorTransitionStartColor = '#a0aec0';
     this.colorTransitionDuration = 1000;
     
+    // UI 刷新心跳
+    this.uiHeartbeat = setInterval(() => {
+      if (this.settings.debug) {
+        this.updateDebugInfo();
+      }
+    }, 1000);
+    
     // 订阅引擎数据更新
     this.engine.onUpdate((data) => {
       this.onEngineUpdate(data);
@@ -91,35 +98,51 @@ class AttentionUI {
     if (!debugDiv) return;
 
     const stats = this.engine.getStatus();
-    const content = window.attentionPulseContentExtractor 
-      ? window.attentionPulseContentExtractor.getCurrentContent() 
-      : null;
-
-    if (!content) return;
-
-    const tagInfo = window.clickedCardContent || {};
-    const currentTagName = tagInfo.tagName || '探测中...';
-    const hashtags = tagInfo.hashtags || [];
+    const sessionStats = this.engine.getSessionStats ? this.engine.getSessionStats() : [];
+    
+    // 如果不在详情页，展示不同的状态
+    const isDetail = this.engine.isDetailActive;
+    const tagInfo = isDetail ? (window.clickedCardContent || {}) : {};
+    const currentTagName = isDetail ? (tagInfo.tagName || '分析中...') : '浏览列表...';
+    const hashtags = isDetail ? (tagInfo.hashtags || []) : [];
+    const currentStayTime = this.engine.getCurrentPageStayTime() / 1000;
 
     const contentHTML = `
       <div style="font-weight: 600; margin-bottom: 12px; color: #fff; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
         <span>AttentionPulse</span>
-        <span style="font-size: 10px; color: rgba(255, 255, 255, 0.4); font-weight: 400;">BETA V1.2</span>
+        <span style="font-size: 10px; color: rgba(255, 255, 255, 0.4); font-weight: 400;">BETA V1.3</span>
       </div>
       
-      <div style="background: rgba(30, 30, 30, 0.4); padding: 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05);">
-        <div style="margin-bottom: 8px; display: flex; justify-content: space-between;">
-          <span style="color: #888;">专注度 (Focus):</span>
-          <span style="color: ${getFocusColor(stats.focusLevel)}; font-weight: bold;">${(stats.focusLevel * 100).toFixed(0)}%</span>
+      <div style="background: rgba(30, 30, 30, 0.4); padding: 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 12px;">
+        <div style="margin-bottom: 6px; display: flex; justify-content: space-between;">
+          <span style="color: #888;">当前正在看:</span>
+          <span style="color: ${isDetail ? '#ff2442' : '#888'}; font-weight: bold;">${currentTagName}</span>
         </div>
-        <div style="margin-bottom: 8px; display: flex; justify-content: space-between;">
-          <span style="color: #888;">发散度 (Diversity):</span>
-          <span style="color: #fff;">${(stats.diversity * 100).toFixed(0)}%</span>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #888;">本次停留:</span>
+          <span style="color: #fff;">${currentStayTime.toFixed(1)}s</span>
         </div>
-        <div style="margin-bottom: 0; display: flex; justify-content: space-between;">
-          <span style="color: #888;">当前标签:</span>
-          <span style="color: #fff;">${currentTagName}</span>
+      </div>
+
+      <div style="background: rgba(255, 255, 255, 0.03); padding: 10px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.05); max-height: 200px; overflow-y: auto;">
+        <div style="font-size: 10px; color: #00c8ff; margin-bottom: 8px; font-weight: 600; display: flex; justify-content: space-between;">
+          <span>会话标签统计 (按时长排序)</span>
+          <span>数量 / 时长</span>
         </div>
+        ${sessionStats.length === 0 ? '<div style="color: #444; text-align: center; font-size: 10px; padding: 10px;">暂无统计数据</div>' : ''}
+        ${sessionStats.slice(0, 8).map(item => {
+          const maxTime = (sessionStats[0] && sessionStats[0].stayTime) || 1;
+          const percentage = Math.min(100, (item.stayTime / maxTime) * 100);
+          return `
+            <div style="margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 10px;">
+              <span style="color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80px;">${item.name}</span>
+              <div style="flex: 1; height: 4px; background: rgba(255,255,255,0.05); margin: 0 8px; border-radius: 2px; position: relative; overflow: hidden;">
+                <div style="height: 100%; background: #00c8ff; width: ${percentage}%;"></div>
+              </div>
+              <span style="color: #888; width: 65px; text-align: right; font-variant-numeric: tabular-nums;">${item.count}篇/${(item.stayTime / 1000).toFixed(0)}s</span>
+            </div>
+          `;
+        }).join('')}
       </div>
 
       <div style="margin: 12px 0; font-size: 10px; color: #666; display: flex; flex-wrap: wrap; gap: 4px;">
@@ -128,11 +151,11 @@ class AttentionUI {
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 10px;">
         <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 4px;">
-          <div style="color: #555; margin-bottom: 2px;">点击:</div>
+          <div style="color: #555; margin-bottom: 2px;">会话点击:</div>
           <div style="color: #fff;">${stats.actions.clicks}</div>
         </div>
         <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 4px;">
-          <div style="color: #555; margin-bottom: 2px;">滚动:</div>
+          <div style="color: #555; margin-bottom: 2px;">会话滚动:</div>
           <div style="color: #fff;">${stats.actions.scrolls}</div>
         </div>
       </div>

@@ -4,96 +4,45 @@
  */
 
 function startContentMonitoring(engine, settings, ui) {
-  console.log('[AttentionPulse:Monitor] 启动内容监控...');
+  console.log('[AttentionPulse:Monitor] 启动内容监控 (精简模式)...');
   
   let scrollTimeout = null;
-  let mutationTimeout = null;
-  let lastContentHash = null;
-  let lastMutationHash = null;
+  // let mutationTimeout = null; // 移除 mutation 相关变量
+  // let lastContentHash = null;
+  // let lastMutationHash = null;
   
+  // 1. 只有滚动时记录 "scrolls" 行为次数，但不进行任何内容提取
   window.addEventListener('scroll', () => {
     if (scrollTimeout) clearTimeout(scrollTimeout);
     
     scrollTimeout = setTimeout(() => {
       engine.recordAction('scrolls');
       
-      if (!window.attentionPulseContentExtractor) return;
-      
-      try {
-        const content = window.attentionPulseContentExtractor.extract();
-        const contentHash = JSON.stringify({
-          url: content.url,
-          scrollPercentage: content.scrollInfo.scrollPercentage,
-          visibleCards: content.visibleContent.cards.length
-        });
-        
-        if (contentHash !== lastContentHash) {
-          lastContentHash = contentHash;
-          
-          if (window.attentionPulseContentTagger && content.visibleContent?.text) {
-            const tag = window.attentionPulseContentTagger.tag(content.visibleContent.text);
-            engine.addRecord({
-              tag: tag,
-              url: content.url,
-              pageType: content.pageType,
-              scrollDepth: (content.scrollInfo.scrollPercentage || 0) / 100
-            });
-          }
-        }
-      } catch (error) {
-        console.error('[AttentionPulse:Monitor] 内容提取出错:', error);
-      }
+      // 注意：已移除滚动时的 extract() 调用，不再因为滚动而分析页面内容
     }, 300);
   }, { passive: true });
   
+  // 2. 移除 MutationObserver (DOM 变化监听)，因为不需要在加载新笔记时抓取
+  /*
   const observer = new MutationObserver((mutations) => {
-    const hasNewContent = mutations.some(mutation => 
-      mutation.addedNodes.length > 0 &&
-      Array.from(mutation.addedNodes).some(node => 
-        node.nodeType === Node.ELEMENT_NODE && node.offsetHeight > 0
-      )
-    );
-    
-    if (hasNewContent) {
-      if (mutationTimeout) clearTimeout(mutationTimeout);
-      
-      mutationTimeout = setTimeout(() => {
-        if (!window.attentionPulseContentExtractor) return;
-        
-        try {
-          const content = window.attentionPulseContentExtractor.extract();
-          const mutationHash = JSON.stringify({
-            visibleCards: content.visibleContent.cards.length,
-            elementCount: content.visibleContent.elementCount,
-            scrollPercentage: content.scrollInfo.scrollPercentage
-          });
-          
-          if (mutationHash !== lastMutationHash) {
-            lastMutationHash = mutationHash;
-            if (settings.debug && ui) {
-              ui.updateDebugInfo();
-            }
-          }
-        } catch (error) {
-          console.error('[AttentionPulse:Monitor] DOM变化内容提取出错:', error);
-        }
-      }, 800);
-    }
+     ...
   });
-  
-  observer.observe(document.body, { childList: true, subtree: true, attributes: false, characterData: false });
+  observer.observe(...) 
+  */
 }
 
 function startInteractionMonitoring(engine, settings, ui) {
-  console.log('[AttentionPulse:Monitor] 启动交互监控...');
+  console.log('[AttentionPulse:Monitor] 启动交互监控 (精简模式)...');
   
-  let lastUrl = ''; // 初始化为空，确保第一次 handleUrlChange 运行
-  engine.resetPageStats();
+  let lastUrl = ''; 
+  // engine.resetPageStats(); // 初始不需要重置，等进入详情页再说
   
+  // 1. 点击监控：仅为了捕捉用户意图，暂不进行深度提取，深度数据在 URL 变化进入详情页后处理
   document.addEventListener('click', (e) => {
     const card = findClickedCard(e.target);
     if (card) {
       engine.recordAction('clicks');
+      // 如果需要记录点击的一瞬间卡片的基本信息做个快照，可以保留
       if (window.attentionPulseContentExtractor) {
         window.clickedCardContent = window.attentionPulseContentExtractor.extractCardContent(card);
       }
@@ -102,21 +51,31 @@ function startInteractionMonitoring(engine, settings, ui) {
   
   const handleUrlChange = () => {
     const currentUrl = window.location.href;
+    // console.log(`[AttentionPulse:Monitor] 检查 URL: ${currentUrl}`); // 调试用
+    
+    // 只有 URL 发生实质变化时才处理
     if (currentUrl !== lastUrl) {
       const isInitialLoad = lastUrl === '';
       lastUrl = currentUrl;
       
-      if (!isInitialLoad) {
-        engine.resetPageStats();
-        console.log('[AttentionPulse:Monitor] 🔄 URL已变化，已通知引擎重置');
-      }
+      // 清理上一个页面的点击缓存，防止数据污染
+      window.clickedCardContent = null;
       
       const pageType = window.attentionPulseContentExtractor 
         ? window.attentionPulseContentExtractor.detectPageType() 
         : 'unknown';
-      
-      if (pageType === 'detail' || currentUrl.includes('/explore/')) {
+
+      // 核心修改：只在检测到进入“详情页”时，才触发真正的数据提取和记录逻辑
+      if (pageType === 'detail') {
+        console.log(`[AttentionPulse:Monitor] 🎯 探测到详情页 (Initial: ${isInitialLoad}), 准备提取数据... URL: ${currentUrl}`);
+        if (!isInitialLoad) {
+          engine.resetPageStats(); // 切换了帖子，重置统计
+        }
         handleDetailPage(engine, settings, ui);
+      } else {
+        console.log(`[AttentionPulse:Monitor] 🔄 页面切换为: ${pageType}, URL: ${currentUrl}`);
+        // 如果当前正在追踪详情页，现在离开详情页了，停止计时
+        engine.stopTracking();
       }
     }
   };
@@ -139,47 +98,69 @@ function startInteractionMonitoring(engine, settings, ui) {
 
 function handleDetailPage(engine, settings, ui) {
   let attemptCount = 0;
-  const maxAttempts = 5;
+  const maxAttempts = 6; // 稍微增加重试次数
+  const targetUrl = window.location.href; // 记录触发时的目标 URL
   
   const tryExtractDetail = () => {
+    // 关键防御逻辑：如果用户已经离开了该详情页，立即停止提取，防止录入错误的（如主页）信息
+    if (window.location.href !== targetUrl) {
+      console.log('[AttentionPulse:Monitor] ⚠️ 检测到页面已跳转，停止提取该笔记数据。');
+      return;
+    }
+
     attemptCount++;
     if (!window.attentionPulseContentExtractor) return;
 
-    const fullText = extractDetailPageContent();
-    if (fullText.length > 500 || attemptCount >= maxAttempts) {
-      if (window.clickedCardContent) {
-        window.clickedCardContent.text = fullText;
-        window.clickedCardContent.isPreview = false;
-      }
-      
-      if (window.attentionPulseContentTagger && fullText.length > 0) {
-        const tag = window.attentionPulseContentTagger.tag(fullText);
-        const tagName = window.attentionPulseContentTagger.getTagName(tag);
-        const hashtags = window.attentionPulseContentTagger.extractHashtags(fullText);
+    // 主动调用提取器
+    const extractedContent = window.attentionPulseContentExtractor.extract();
+    const fullText = extractedContent.textContent || '';
+    
+    // 如果提取到了有效正文（即使只有 5 字，小红书有些笔记确实很短）或者达到最大尝试次数
+    if (fullText.length > 5 || attemptCount >= maxAttempts) {
+      // 只有在还是同一个页面时才进行记录
+      if (window.location.href === targetUrl) {
+        console.log(`[AttentionPulse:Monitor] 提取详情页完毕 (次数: ${attemptCount}), 长度: ${fullText.length}`);
         
+        // 更新点击缓存
         if (window.clickedCardContent) {
-          window.clickedCardContent.tag = tag;
-          window.clickedCardContent.tagName = tagName;
-          window.clickedCardContent.hashtags = hashtags;
+          window.clickedCardContent.title = extractedContent.title;
+          window.clickedCardContent.text = fullText;
+          window.clickedCardContent.isPreview = false;
         }
-
-        const stayTime = Date.now() - engine.pageEnterTime;
-        const scrollDepth = (window.attentionPulseContentExtractor.getCurrentContent()?.scrollInfo?.scrollPercentage || 0) / 100;
         
-        engine.addRecord({
-          tag: tag,
-          url: window.location.href,
-          pageType: 'detail',
-          stayTime: stayTime,
-          scrollDepth: scrollDepth
-        });
+        // 生成标签并记录
+        if (window.attentionPulseContentTagger && fullText.length > 0) {
+          const tag = window.attentionPulseContentTagger.tag(fullText);
+          const tagName = window.attentionPulseContentTagger.getTagName(tag);
+          const hashtags = window.attentionPulseContentTagger.extractHashtags(fullText);
+          
+          if (window.clickedCardContent) {
+            window.clickedCardContent.tag = tag;
+            window.clickedCardContent.tagName = tagName;
+            window.clickedCardContent.hashtags = hashtags;
+          }
+
+          const stayTime = Date.now() - engine.pageEnterTime;
+          const scrollPercentage = extractedContent.scrollInfo?.scrollPercentage || 0;
+          
+          engine.addRecord({
+            tag: tag,
+            url: targetUrl, // 使用进入时的 URL 而不是当前 window.location
+            title: extractedContent.title,
+            pageType: 'detail',
+            stayTime: stayTime,
+            scrollDepth: scrollPercentage / 100
+          });
+        }
       }
     } else {
-      setTimeout(tryExtractDetail, 500);
+      // 继续重试，缩短重试间隔以匹配快速操作
+      setTimeout(tryExtractDetail, 400);
     }
   };
   
-  setTimeout(tryExtractDetail, 1000);
+  // 减少初始等待时间，更早尝试抓取
+  setTimeout(tryExtractDetail, 300);
 }
 
 function findClickedCard(target) {
@@ -197,19 +178,4 @@ function findClickedCard(target) {
     depth++;
   }
   return null;
-}
-
-function extractDetailPageContent() {
-  const selectors = ['[class*="note-detail"]', '[class*="detail-content"]', 'article', 'main'];
-  let mainContent = null;
-  for (const s of selectors) {
-    const el = document.querySelector(s);
-    if (el && el.offsetHeight > 200) { mainContent = el; break; }
-  }
-  if (!mainContent) {
-     const clone = document.body.cloneNode(true);
-     clone.querySelectorAll('nav, header, footer, [class*="nav"], [class*="header"], [class*="sidebar"]').forEach(el => el.remove());
-     mainContent = clone;
-  }
-  return (mainContent.innerText || '').trim();
 }

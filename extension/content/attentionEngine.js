@@ -101,7 +101,8 @@ function calculateDiversity(timeWindow) {
 // 4. 数据处理引擎类
 class AttentionEngine {
   constructor() {
-    this.timeWindow = new TimeWindow(30000); // 30秒滑动窗口
+    this.timeWindow = new TimeWindow(30000); // 30秒短窗口（用于专注度计算）
+    this.statsWindow = new TimeWindow(300000); // 新增：5分钟统计窗口 (5 * 60 * 1000)
     this.pageEnterTime = Date.now();
     this.userActions = {
       clicks: 0,
@@ -113,6 +114,7 @@ class AttentionEngine {
     this.sessionId = this.generateSessionId();
     this.onUpdateCallbacks = [];
     this.completeRecords = []; // 存储完整历史记录
+    this.isDetailActive = false; // 新增：标记当前是否正在详情页活跃计时
   }
 
   generateSessionId() {
@@ -138,16 +140,27 @@ class AttentionEngine {
     if (typeof createCompleteRecord === 'function') {
       const completeRecord = createCompleteRecord(baseRecord);
       this.completeRecords.push(completeRecord);
+      this.isDetailActive = true; // 开启计时标志
+      
       this.timeWindow.addRecord(completeRecord);
+      this.statsWindow.addRecord(completeRecord); // 同时加入5分钟统计窗口
       
       const scrollDepth = completeRecord.scrollDepth || 0;
-      this.currentFocusLevel = calculateFocusLevel(this.timeWindow, { scrollDepth });
-      this.currentDiversity = calculateDiversity(this.timeWindow);
+      // 暂时移除：专注度和发散度计算
+      // this.currentFocusLevel = calculateFocusLevel(this.timeWindow, { scrollDepth });
+      // this.currentDiversity = calculateDiversity(this.timeWindow);
+
+      // 获取实时统计数据
+      const realTimeStats = this.getRecentStats();
+      const sessionStats = this.getSessionStats();
 
       this.notifyUpdate({
         focusLevel: this.currentFocusLevel,
         diversity: this.currentDiversity,
-        tag: completeRecord.tag
+        tag: completeRecord.tag,
+        tagName: completeRecord.tagName,
+        stats: realTimeStats, // 将5分钟统计结果一起发给 UI
+        sessionStats: sessionStats // 将会话总统计结果发给 UI
       });
     } else {
       // 降级处理
@@ -155,11 +168,104 @@ class AttentionEngine {
     }
   }
 
+  /**
+   * 新增：获取最近5分钟的实时统计数据
+   */
+  getRecentStats() {
+    this.finalizeLastRecord();
+    const records = this.statsWindow ? this.statsWindow.getRecords() : [];
+    if (!records || records.length === 0) return null;
+
+    const tagCounts = {};
+    const tagStayTimes = {};
+    let totalStayTime = 0;
+
+    records.forEach(r => {
+      const tag = r.tag || 'unknown';
+      tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      
+      const stay = r.stayTime || 0;
+      tagStayTimes[tag] = (tagStayTimes[tag] || 0) + stay;
+      totalStayTime += stay;
+    });
+
+    let topTag = 'unknown';
+    let maxCount = 0;
+    Object.keys(tagCounts).forEach(tag => {
+      if (tagCounts[tag] > maxCount) {
+        maxCount = tagCounts[tag];
+        topTag = tag;
+      }
+    });
+
+    return {
+      totalCount: records.length,
+      topTag: topTag,
+      topTagPercentage: (maxCount / records.length * 100).toFixed(1),
+      tagCounts: tagCounts,
+      tagStayTimes: tagStayTimes,
+      totalStayTime: totalStayTime
+    };
+  }
+
   resetPageStats() {
+    this.stopTracking(); // 在重置前，停止并结算上一条记录
     this.pageEnterTime = Date.now();
     this.userActions.clicks = 0;
     this.userActions.scrolls = 0;
     this.userActions.pageSwitches++;
+  }
+
+  /**
+   * 停止当前详情页的追踪
+   */
+  stopTracking() {
+    this.finalizeLastRecord();
+    this.isDetailActive = false;
+  }
+
+  finalizeLastRecord() {
+    // 只有在活跃追踪状态下才更新时间，防止在列表页误加时间
+    if (this.isDetailActive && this.completeRecords.length > 0) {
+      const lastRecord = this.completeRecords[this.completeRecords.length - 1];
+      // 计算从进入页面到此刻的总时间
+      const finalStayTime = Date.now() - this.pageEnterTime;
+      
+      // 只有在时间合理范围内（比如小于 30 分钟）才进行更新，防止挂机
+      if (finalStayTime > 0 && finalStayTime < 1800000) {
+        lastRecord.stayTime = finalStayTime;
+      }
+    }
+  }
+
+  getCurrentPageStayTime() {
+    if (!this.isDetailActive) return 0;
+    return Date.now() - this.pageEnterTime;
+  }
+
+  /**
+   * 获取本次会话自开启以来的所有标签统计信息
+   */
+  getSessionStats() {
+    this.finalizeLastRecord(); // 结算数据
+    
+    const tagCounts = {};
+    const tagStayTimes = {};
+    
+    this.completeRecords.forEach(r => {
+      const tagName = r.tagName || r.tag || '未知';
+      tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+      tagStayTimes[tagName] = (tagStayTimes[tagName] || 0) + (r.stayTime || 0);
+    });
+
+    // 转换为数组并按时间排序，方便 UI 展示
+    const sortedStats = Object.keys(tagCounts).map(name => ({
+      name,
+      count: tagCounts[name],
+      stayTime: tagStayTimes[name]
+    })).sort((a, b) => b.stayTime - a.stayTime);
+
+    return sortedStats;
   }
 
   getStatus() {
