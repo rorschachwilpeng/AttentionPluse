@@ -1,8 +1,8 @@
 // 最简单的测试脚本 - 确保能注入
-console.error('[AttentionPulse TEST] ===== 测试脚本已加载 =====');
-console.error('[AttentionPulse TEST] 当前 URL:', window.location.href);
-console.error('[AttentionPulse TEST] 页面标题:', document.title);
-console.error('[AttentionPulse TEST] 时间戳:', new Date().toISOString());
+console.error('[AttentionPulse:Test] ===== 测试脚本已加载 =====');
+console.error('[AttentionPulse:Test] 当前 URL:', window.location.href);
+console.error('[AttentionPulse:Test] 页面标题:', document.title);
+console.error('[AttentionPulse:Test] 时间戳:', new Date().toISOString());
 
 // 在页面上创建一个明显的标记（带详细信息）
 const testMarker = document.createElement('div');
@@ -31,5 +31,5 @@ testMarker.innerHTML = `
 `;
 document.body.appendChild(testMarker);
 
-console.error('[AttentionPulse TEST] 测试标记已添加到页面');
+console.error('[AttentionPulse:Test] 测试标记已添加到页面');
 

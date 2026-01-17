@@ -26,9 +26,9 @@ async function loadSettings() {
     sizeSelect.value = settings.size;
     debugToggle.checked = settings.debug;
     
-    console.log('[AttentionPulse Popup] 设置已加载:', settings);
+    console.log('[AttentionPulse:Popup] 设置已加载:', settings);
   } catch (error) {
-    console.error('[AttentionPulse Popup] 加载设置失败:', error);
+    console.error('[AttentionPulse:Popup] 加载设置失败:', error);
     // 使用默认设置
     applyDefaultSettings();
   }
@@ -53,12 +53,12 @@ async function saveSettings() {
   
   try {
     await chrome.storage.local.set({ attentionPulseSettings: settings });
-    console.log('[AttentionPulse Popup] 设置已保存:', settings);
+    console.log('[AttentionPulse:Popup] 设置已保存:', settings);
     
     // 通知 content script 设置已更新
     notifyContentScript(settings);
   } catch (error) {
-    console.error('[AttentionPulse Popup] 保存设置失败:', error);
+    console.error('[AttentionPulse:Popup] 保存设置失败:', error);
   }
 }
 

@@ -51,14 +51,14 @@ class ContentExtractor {
 
     // 小红书页面类型判断
     if (url.includes('xiaohongshu.com')) {
-      if (path.includes('/explore') || path === '/' || path === '/home') {
+      if (path.includes('/explore/item') || (path.startsWith('/explore/') && path.length > 9)) {
+        return 'detail'; // 详情页（优先判断）
+      } else if (path === '/explore' || path === '/' || path === '/home' || path.startsWith('/home')) {
         return 'feed'; // 信息流
       } else if (path.includes('/discovery')) {
         return 'discovery'; // 发现页
       } else if (path.includes('/user')) {
         return 'profile'; // 用户主页
-      } else if (path.includes('/explore/item')) {
-        return 'detail'; // 详情页
       }
     }
 
@@ -377,7 +377,7 @@ class ContentExtractor {
         isPreview: !description || description.length < text.trim().length * 0.5
       };
     } catch (error) {
-      console.error('[ContentExtractor] 提取卡片内容失败:', error);
+      console.error('[AttentionPulse:Extractor] 提取卡片内容失败:', error);
       return null;
     }
   }

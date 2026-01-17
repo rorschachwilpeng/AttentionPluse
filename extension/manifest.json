@@ -19,6 +19,11 @@
       "js": [
         "content/contentExtractor.js",
         "content/contentTagger.js",
+        "content/attentionUtils.js",
+        "content/attentionEngine.js",
+        "content/attentionData.js",
+        "content/attentionUI.js",
+        "content/attentionMonitor.js",
         "content/content.js"
       ],
       "run_at": "document_idle",
