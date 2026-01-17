@@ -1,0 +1,112 @@
+/**
+ * Xixi SVG Widget 样式
+ * 展示如何通过 CSS 实现连续平滑的动画效果
+ */
+
+/* SVG 容器 */
+.xixi-svg-widget {
+  /* 尺寸由 JavaScript 直接设置，这里只设置过渡 */
+  width: 100%;
+  height: 100%;
+  
+  /* 平滑过渡（保证连续性） */
+  transition: filter 0.2s ease-out;
+  
+  /* 注意：filter 效果由 JavaScript 动态设置 */
+}
+
+/* 主组（应用浮动和呼吸动画） */
+.xixi-main-group {
+  /* 动画通过 JavaScript 直接设置 transform */
+  /* 这里可以添加额外的 CSS 动画作为补充 */
+  transition: transform 0.1s ease-out;
+}
+
+/* 水母主体 */
+.xixi-body {
+  /* 透明度（根据 D 值变化） */
+  opacity: var(--transparency, 0.8);
+  transition: opacity 0.2s ease-out;
+}
+
+/* 钟状体 */
+.xixi-bell {
+  /* 渐变和滤镜通过 JavaScript 动态切换 */
+  /* 这里只设置过渡效果 */
+  transition: fill 0.3s ease-out,
+              stroke 0.3s ease-out,
+              opacity 0.2s ease-out,
+              filter 0.3s ease-out;
+}
+
+/* 内部结构线条 */
+.xixi-internal-line {
+  /* 透明度随主体变化 */
+  opacity: var(--transparency, 0.5);
+  transition: opacity 0.2s ease-out;
+}
+
+/* 触手组 */
+.xixi-tentacles {
+  /* 触手动画通过 JavaScript 控制 */
+  /* CSS 可以添加额外的动画效果 */
+}
+
+/* 单个触手 */
+.xixi-tentacle {
+  /* 触手摆动动画（CSS 动画作为基础，JavaScript 控制细节） */
+  transform-origin: top center;
+  transition: transform 0.1s ease-out;
+  
+  /* 可选：CSS 动画作为补充 */
+  animation: tentacle-wave var(--wave-speed, 2s) ease-in-out infinite;
+  animation-delay: calc(var(--tentacle-index, 0) * 0.1s);
+}
+
+@keyframes tentacle-wave {
+  0%, 100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: translateX(var(--wave-amplitude, 5px)) rotate(5deg);
+  }
+}
+
+/* 面部元素 */
+.xixi-face {
+  opacity: var(--transparency, 0.8);
+  transition: opacity 0.2s ease-out;
+}
+
+.xixi-eye {
+  transition: opacity 0.2s ease-out;
+}
+
+.xixi-cheek {
+  transition: opacity 0.2s ease-out;
+}
+
+/* 光泽效果（通过滤镜） */
+.xixi-bell[filter*="gloss"] {
+  opacity: var(--gloss-intensity, 1.0);
+  transition: opacity 0.2s ease-out;
+}
+
+/* 浑浊效果（通过滤镜） */
+.xixi-bell[filter*="turbid"] {
+  opacity: var(--transparency, 0.5);
+  transition: opacity 0.2s ease-out;
+}
+
+/* 响应式调整 */
+@media (prefers-reduced-motion: reduce) {
+  .xixi-svg-widget,
+  .xixi-main-group,
+  .xixi-body,
+  .xixi-bell,
+  .xixi-tentacle {
+    transition: none;
+    animation: none;
+  }
+}
+
