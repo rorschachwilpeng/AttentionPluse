@@ -24,7 +24,7 @@
     size: 'medium',
     debug: false,
     xixiEnabled: true,  // 默认启用 Xixi widget
-    xixiUseEngineData: true  // 默认使用 engine 数据
+    xixiUseEngineData: false  // 默认关闭引擎自动更新，改为通过后端数据接口或手动设置
   };
 
   // 3. 实例化核心类
