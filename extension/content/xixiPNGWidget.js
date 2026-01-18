@@ -346,6 +346,12 @@ class XixiPNGWidget {
           
           // 延迟启动动画，确保 src 已设置
           setTimeout(() => {
+            // 关键修复：确保状态仍然匹配，防止异步竞争导致旧状态动画启动
+            if (this.currentState !== state) {
+              console.log(`[XixiPNGWidget] 状态已从 ${state} 变为 ${this.currentState}，取消旧动画启动`);
+              return;
+            }
+            
             if (state === 'baseline' && this.baselineAnimation) {
               this.baselineAnimation.reset();
               this.baselineAnimation.start();
@@ -386,6 +392,12 @@ class XixiPNGWidget {
       console.log(`  - 图片未加载，直接使用 URL: ${newImage.substring(0, 50)}...`);
       // 直接使用 URL 字符串，switchImage 会处理
       this.stateTransition.transition(oldState, state, newImage, () => {
+        // 如果在 transition 期间状态已经再次发生变化，则不执行任何操作
+        if (this.currentState !== state) {
+          console.log(`[XixiPNGWidget] transition 完成但状态已变更 (${state} -> ${this.currentState})，跳过动画启动`);
+          return;
+        }
+
         // 切换完成后启动新状态的动画
         if (state === 'baseline' && this.baselineAnimation) {
           this.baselineAnimation.reset();
@@ -465,6 +477,12 @@ class XixiPNGWidget {
       
       // 延迟启动动画，确保 src 已设置
       setTimeout(() => {
+        // 如果在等待期间状态已经再次发生变化，则不执行任何操作
+        if (this.currentState !== state) {
+          console.log(`[XixiPNGWidget] setTimeout 完成但状态已变更 (${state} -> ${this.currentState})，跳过动画启动`);
+          return;
+        }
+
         if (state === 'baseline' && this.baselineAnimation) {
           this.baselineAnimation.reset();
           this.baselineAnimation.start();

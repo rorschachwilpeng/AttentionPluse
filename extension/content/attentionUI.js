@@ -746,36 +746,34 @@ class AttentionUI {
   }
 
   calculateDFromEngine(engineData) {
-    if (!engineData) return 0.5;
+    if (!engineData || !engineData.stats) return 0.5;
     
     // 获取 5 分钟统计数据
-    const stats = engineData.stats || {};
+    const stats = engineData.stats;
     const totalCount = stats.totalCount || 0;
-    const topTagPercentage = parseFloat(stats.topTagPercentage || 0) / 100;
+    // topTagPercentage 是 0-100 的数值
+    const topTagRatio = (parseFloat(stats.topTagPercentage) || 0) / 100;
     
-    // 1. 帖子切换频率：5分钟内看完10个帖子则视为高扰动 (Restless)
-    const switchScore = Math.min(1, totalCount / 10);
+    // 方案逻辑：
+    // 1. 无行为记录时回归基准
+    if (totalCount === 0) return 0.5;
+
+    // 2. 如果 5 分钟内看贴极少 (<=2)，认为是深度阅读/专注状态
+    if (totalCount <= 2) return 0.2; 
     
-    // 2. 兴趣集中度：最高频标签占比越低，说明兴趣越分散 (High Disturbance)
-    const diversityScore = 1 - topTagPercentage;
+    // 3. 如果某种标签占比极高 (>=80%)，说明兴趣点非常集中
+    if (topTagRatio >= 0.8) return 0.3;
+
+    // 4. 计算浮躁度：根据看贴总数和标签分散度
+    // 基础分：从 0.5 开始，随看贴数线性增长到 0.8 (10个贴子封顶)
+    const countWeight = Math.min(totalCount / 10, 1.0);
+    const baseD = 0.5 + (countWeight * 0.3);
     
-    // 综合计算基础 D 值
-    let D = (switchScore * 0.6) + (diversityScore * 0.4);
+    // 标签分散度惩罚：如果最常看的标签占比低，额外增加 D 值
+    // 假如 topTagRatio 为 0.3 (很分散)，diversityBonus 为 0.1
+    const diversityBonus = topTagRatio < 0.5 ? 0.1 : 0;
     
-    // 3. 当前页面停留：如果正在详情页且停留超过 45秒，强制降低 D 值进入冷静态 (Calm)
-    const isDetailActive = this.engine?.isDetailActive;
-    const stayTime = this.engine?.getCurrentPageStayTime ? this.engine.getCurrentPageStayTime() : 0;
-    
-    if (isDetailActive && stayTime > 45000) {
-      // 随着停留时间增加，D 值进一步下降
-      const reduction = Math.min(0.5, (stayTime - 45000) / 60000);
-      D = Math.max(0.2, D - reduction);
-    }
-    
-    // 4. 无行为降级：如果 5 分钟没看新帖子，D 值回归 baseline
-    if (totalCount === 0) {
-      D = 0.5;
-    }
+    let D = baseD + diversityBonus;
 
     return Math.max(0, Math.min(1, D));
   }
