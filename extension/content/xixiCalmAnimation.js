@@ -1,45 +1,50 @@
 /**
- * Xixi 冷静状态动画
- * 实现深呼吸动画效果（非对称呼吸曲线）
+ * Xixi 冷静状态动画 (Calm)
+ * 目标：实现非对称深呼吸效果，越专注越透明
+ * 设计规范：
+ * 1. 整体透明度更低（基础 0.7，比 Baseline 更透明）
+ * 2. 非对称呼吸曲线：吸气 opacity ↓, scale ↑；呼气 opacity ↑, scale ↓
+ * 3. 使用 easing 函数（ease-in 吸气，ease-out 呼气）
+ * 4. 节律：慢、不对称、有停顿
  */
 
 class XixiCalmAnimation {
   constructor(widget) {
     this.widget = widget;
     
-    // 动画参数
+    // 动画配置 - 严格遵循 UI 设计稿
     this.config = {
       // 呼吸周期总时长（秒）- 慢节奏
-      cycleDuration: 6.0,  // 6秒一个完整周期
+      cycleDuration: 5.0,  // 5秒一个完整周期
       
       // 非对称呼吸时间分配（总和应为 1.0）
-      // 吸气时间短，吐气时间长，中间有停顿
-      inhaleRatio: 0.25,      // 25% - 吸气
-      inhalePauseRatio: 0.1,  // 10% - 吸气后停顿
-      exhaleRatio: 0.45,      // 45% - 吐气
-      exhalePauseRatio: 0.2,  // 20% - 吐气后停顿
+      inhaleRatio: 0.4,        // 40% - 吸气
+      inhalePauseRatio: 0.06,  // 6% - 吸气后停顿
+      exhaleRatio: 0.44,       // 44% - 呼气（略长于吸气，实现不对称）
+      exhalePauseRatio: 0.10,  // 10% - 呼气后停顿
+      
+      // 基础透明度（比 Baseline 更透明，越专注越不干扰）
+      baseOpacity: 0.7,
       
       // 呼吸幅度
-      scaleMin: 0.95,         // 最小缩放（吐气时）
-      scaleMax: 1.05,         // 最大缩放（吸气时）
-      opacityMin: 0.70,       // 最小透明度（吐气时，更透明/消散）
-      opacityMax: 0.95,       // 最大透明度（吸气时，更不透明/清晰）
+      opacityRange: 0.2,       // 透明度变化范围（±0.2，即 0.5-0.7）
+      scaleRange: 0.08,        // 缩放变化范围（1.0-1.08）
       
-      // Easing 函数参数（用于平滑过渡）
-      easingPower: 2.5,       // easing 曲线的幂次，值越大越平滑
+      // 平滑指数
+      smoothFactor: 0.15,      // 平滑速度系数（0-1，越大越平滑）
     };
     
-    // 状态
+    // 运行状态
     this.isActive = false;
     
-    // 动画时间
-    this.animationTime = 0;   // 当前周期内的进度（0-1）
-    this.cycleStartTime = 0;   // 当前周期开始的时间戳
-    this.lastFrameTime = Date.now();
+    // 动画时间记录
+    this.animationTime = 0;
     
-    // 当前动画值
+    // 当前视觉参数
     this.currentScale = 1.0;
-    this.currentOpacity = 0.9;
+    this.currentOpacity = 0.7;
+    this.targetScale = 1.0;
+    this.targetOpacity = 0.7;
     
     // 计算各阶段的时间点
     this.calculatePhaseTimings();
@@ -49,7 +54,6 @@ class XixiCalmAnimation {
    * 计算各阶段的时间点
    */
   calculatePhaseTimings() {
-    const duration = this.config.cycleDuration;
     this.phaseTimings = {
       inhaleStart: 0,
       inhaleEnd: this.config.inhaleRatio,
@@ -63,30 +67,18 @@ class XixiCalmAnimation {
    * 启动动画
    */
   start() {
-    if (this.isActive) {
-      return;
-    }
+    if (this.isActive) return;
 
     this.isActive = true;
     this.animationTime = 0;
-    this.cycleStartTime = Date.now();
-    this.lastFrameTime = Date.now();
     
-    // 初始化当前图片（延迟执行，确保 transition 已完成）
-    setTimeout(() => {
-      // 检查 src 是否已设置，如果已设置则跳过 updateImage
-      if (this.widget.imgElement && this.widget.imgElement.src && this.widget.imgElement.src !== '') {
-        console.log('[XixiCalmAnimation] 图片 src 已设置，跳过 updateImage');
-      } else {
-        this.updateImage();
-      }
-    }, 100);
+    // 初始化图片
+    this.updateImage();
     
-    // 初始化动画值
-    this.currentScale = (this.config.scaleMin + this.config.scaleMax) / 2;
-    this.currentOpacity = (this.config.opacityMin + this.config.opacityMax) / 2;
+    // 立即应用初始样式
+    this.applyChanges();
     
-    console.log('[XixiCalmAnimation] 深呼吸动画已启动');
+    console.log('[XixiCalmAnimation] 阶段 3 启动：冷静状态深呼吸模式');
   }
 
   /**
@@ -94,111 +86,46 @@ class XixiCalmAnimation {
    */
   stop() {
     this.isActive = false;
-    console.log('[XixiCalmAnimation] 深呼吸动画已停止');
+    if (this.widget.imgElement) {
+      this.widget.imgElement.style.transition = '';
+    }
   }
 
   /**
-   * 更新图片显示（calm 状态只有一张图片，不需要切换）
+   * 更新图片显示（calm 状态只有一张图片）
    */
   updateImage() {
-    if (!this.widget.imgElement) {
-      return;
-    }
-    
-    // 如果 src 已设置，不要清空它
-    const currentSrc = this.widget.imgElement.src;
-    
-    const images = this.widget.imageLoader.getStateImages('calm');
-    if (images.length === 0) {
-      // 如果没有图片，但 src 已设置，保持现状
-      return;
-    }
+    const imgEl = this.widget.imgElement;
+    if (!imgEl) return;
 
-    // calm 状态只有一张图片，直接设置
+    const images = this.widget.imageLoader.getStateImages('calm');
     const image = images[0];
+    
     if (image) {
-      // 获取图片 URL（支持 Image 对象或 URL 字符串）
-      let imageSrc = null;
-      if (typeof image === 'string') {
-        imageSrc = image;
-      } else if (image && image.src) {
-        imageSrc = image.src;
-      }
-      
-      // 只有在获取到有效 URL 时才设置 src
-      if (imageSrc) {
-        // 如果 src 已设置且相同，跳过
-        if (currentSrc === imageSrc) {
-          return;
-        }
-        this.widget.imgElement.src = imageSrc;
-        this.widget.imgElement.style.opacity = '1';
-      } else {
-        // 如果无法获取 URL，但 src 已设置，保持现状，不要清空
-        if (!currentSrc || currentSrc === '') {
-          console.warn('[XixiCalmAnimation] updateImage: 无法获取图片 URL，且当前 src 为空');
-        }
+      let imageSrc = typeof image === 'string' ? image : image.src;
+      if (imageSrc && imgEl.src !== imageSrc) {
+        imgEl.style.transition = 'opacity 1s ease-in-out, transform 1s ease-in-out';
+        imgEl.src = imageSrc;
       }
     }
   }
 
   /**
-   * Easing 函数：平滑的缓入缓出曲线
+   * Easing 函数：ease-in（吸气用，开始慢，后加速）
    * @param {number} t - 进度值 (0-1)
    * @returns {number} 缓动后的值 (0-1)
    */
-  easeInOut(t) {
-    // 使用幂函数实现平滑的缓入缓出
-    const power = this.config.easingPower;
-    if (t < 0.5) {
-      return Math.pow(t * 2, power) / 2;
-    } else {
-      return 1 - Math.pow((1 - t) * 2, power) / 2;
-    }
+  easeIn(t) {
+    return t * t;
   }
 
   /**
-   * 根据当前阶段计算动画值
-   * @param {number} phaseProgress - 当前阶段的进度 (0-1)
-   * @param {string} phase - 阶段名称
-   * @returns {object} {scale, opacity}
+   * Easing 函数：ease-out（呼气用，开始快，后减速）
+   * @param {number} t - 进度值 (0-1)
+   * @returns {number} 缓动后的值 (0-1)
    */
-  calculatePhaseValues(phaseProgress, phase) {
-    let scale, opacity;
-    
-    switch (phase) {
-      case 'inhale':
-        // 吸气：从最小到最大，使用 easing
-        const inhaleEased = this.easeInOut(phaseProgress);
-        scale = this.config.scaleMin + (this.config.scaleMax - this.config.scaleMin) * inhaleEased;
-        opacity = this.config.opacityMin + (this.config.opacityMax - this.config.opacityMin) * inhaleEased;
-        break;
-        
-      case 'inhalePause':
-        // 吸气后停顿：保持最大值
-        scale = this.config.scaleMax;
-        opacity = this.config.opacityMax;
-        break;
-        
-      case 'exhale':
-        // 吐气：从最大到最小，使用 easing
-        const exhaleEased = this.easeInOut(phaseProgress);
-        scale = this.config.scaleMax - (this.config.scaleMax - this.config.scaleMin) * exhaleEased;
-        opacity = this.config.opacityMax - (this.config.opacityMax - this.config.opacityMin) * exhaleEased;
-        break;
-        
-      case 'exhalePause':
-        // 吐气后停顿：保持最小值
-        scale = this.config.scaleMin;
-        opacity = this.config.opacityMin;
-        break;
-        
-      default:
-        scale = (this.config.scaleMin + this.config.scaleMax) / 2;
-        opacity = (this.config.opacityMin + this.config.opacityMax) / 2;
-    }
-    
-    return { scale, opacity };
+  easeOut(t) {
+    return 1 - (1 - t) * (1 - t);
   }
 
   /**
@@ -206,81 +133,94 @@ class XixiCalmAnimation {
    * @param {number} deltaTime - 时间差（毫秒）
    */
   update(deltaTime) {
-    if (!this.isActive) {
-      return;
-    }
+    if (!this.isActive) return;
 
-    // 更新动画时间（转换为秒）
     const deltaSeconds = deltaTime / 1000;
     this.animationTime += deltaSeconds;
     
     // 计算当前周期内的进度 (0-1)
-    let cycleProgress = (this.animationTime % this.config.cycleDuration) / this.config.cycleDuration;
+    const cycleProgress = (this.animationTime % this.config.cycleDuration) / this.config.cycleDuration;
     
-    // 确定当前处于哪个阶段
-    let currentPhase;
-    let phaseProgress = 0;
-    
-    if (cycleProgress < this.phaseTimings.inhaleEnd) {
-      // 吸气阶段
-      currentPhase = 'inhale';
-      phaseProgress = cycleProgress / this.phaseTimings.inhaleEnd;
-    } else if (cycleProgress < this.phaseTimings.inhalePauseEnd) {
-      // 吸气后停顿
-      currentPhase = 'inhalePause';
-      phaseProgress = 1.0; // 停顿阶段保持最大值
-    } else if (cycleProgress < this.phaseTimings.exhaleEnd) {
-      // 吐气阶段
-      currentPhase = 'exhale';
-      const exhaleStart = this.phaseTimings.inhalePauseEnd;
-      const exhaleDuration = this.phaseTimings.exhaleEnd - exhaleStart;
-      phaseProgress = (cycleProgress - exhaleStart) / exhaleDuration;
-    } else {
-      // 吐气后停顿
-      currentPhase = 'exhalePause';
-      phaseProgress = 1.0; // 停顿阶段保持最小值
-    }
-    
-    // 计算当前阶段的目标值
-    const targetValues = this.calculatePhaseValues(phaseProgress, currentPhase);
-    
-    // 平滑过渡到目标值（使用线性插值，让动画更流畅）
-    const smoothingSpeed = 0.15; // 平滑速度系数
-    this.currentScale += (targetValues.scale - this.currentScale) * smoothingSpeed;
-    this.currentOpacity += (targetValues.opacity - this.currentOpacity) * smoothingSpeed;
+    // 计算呼吸效果
+    this.calculateBreathing(cycleProgress);
     
     // 应用变化到 DOM
     this.applyChanges();
   }
 
   /**
-   * 应用变化到 DOM
+   * 计算非对称深呼吸效果
+   * @param {number} cycleProgress - 周期进度 (0-1)
    */
-  applyChanges() {
-    if (!this.widget.imgElement) {
-      return;
+  calculateBreathing(cycleProgress) {
+    const timings = this.phaseTimings;
+    let targetScale, targetOpacity;
+    
+    if (cycleProgress < timings.inhaleEnd) {
+      // 吸气阶段：opacity ↓, scale ↑ (ease-in)
+      const inhaleProgress = cycleProgress / timings.inhaleEnd;
+      const easedProgress = this.easeIn(inhaleProgress);
+      
+      // 吸气时：透明度降低（更透明），缩放增大
+      targetOpacity = this.config.baseOpacity - this.config.opacityRange * easedProgress;
+      targetScale = 1.0 + this.config.scaleRange * easedProgress;
+      
+    } else if (cycleProgress < timings.inhalePauseEnd) {
+      // 吸气后停顿：保持最小值
+      targetOpacity = this.config.baseOpacity - this.config.opacityRange;
+      targetScale = 1.0 + this.config.scaleRange;
+      
+    } else if (cycleProgress < timings.exhaleEnd) {
+      // 呼气阶段：opacity ↑, scale ↓ (ease-out)
+      const exhaleStart = timings.inhalePauseEnd;
+      const exhaleProgress = (cycleProgress - exhaleStart) / (timings.exhaleEnd - exhaleStart);
+      const easedProgress = this.easeOut(exhaleProgress);
+      
+      // 呼气时：透明度升高（更不透明），缩放减小
+      targetOpacity = (this.config.baseOpacity - this.config.opacityRange) + 
+                      this.config.opacityRange * easedProgress;
+      targetScale = (1.0 + this.config.scaleRange) - 
+                    this.config.scaleRange * easedProgress;
+      
+    } else {
+      // 呼气后停顿：保持基础值
+      targetOpacity = this.config.baseOpacity;
+      targetScale = 1.0;
     }
-
-    // 应用 scale（通过 transform）
-    this.widget.imgElement.style.transform = `scale(${this.currentScale})`;
     
-    // 应用 opacity（叠加在基础 opacity 上）
-    const baseOpacity = this.widget.getBaseOpacity();
-    const finalOpacity = baseOpacity * this.currentOpacity;
-    this.widget.imgElement.style.opacity = finalOpacity;
-    
-    // 使用 CSS transition 让变化更平滑
-    this.widget.imgElement.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+    // 平滑过渡到目标值
+    const smoothFactor = this.config.smoothFactor;
+    this.currentScale += (targetScale - this.currentScale) * smoothFactor;
+    this.currentOpacity += (targetOpacity - this.currentOpacity) * smoothFactor;
   }
 
   /**
-   * 重置动画状态
+   * 应用视觉变化到 DOM
+   */
+  applyChanges() {
+    const imgEl = this.widget.imgElement;
+    if (!imgEl || !imgEl.src) return;
+
+    // Calm 状态：整体更透明（基础 0.7），呼吸效果在此基础上变化
+    // 直接使用计算好的呼吸透明度，确保比 Baseline 更透明
+    const finalOpacity = this.currentOpacity;
+
+    // 应用变换
+    imgEl.style.transform = `scale(${this.currentScale})`;
+    imgEl.style.opacity = finalOpacity;
+    
+    // 确保显示状态
+    imgEl.style.display = 'block';
+    imgEl.style.visibility = 'visible';
+  }
+
+  /**
+   * 重置状态
    */
   reset() {
     this.animationTime = 0;
-    this.cycleStartTime = Date.now();
-    this.currentScale = (this.config.scaleMin + this.config.scaleMax) / 2;
-    this.currentOpacity = (this.config.opacityMin + this.config.opacityMax) / 2;
+    this.currentScale = 1.0;
+    this.currentOpacity = this.config.baseOpacity;
     this.updateImage();
   }
 }
@@ -289,4 +229,3 @@ class XixiCalmAnimation {
 if (typeof window !== 'undefined') {
   window.XixiCalmAnimation = XixiCalmAnimation;
 }
-

@@ -40,7 +40,9 @@ class AttentionUI {
     this.mockSliderContainer = null;
     
     // 数据源配置
-    this.useEngineData = settings.xixiUseEngineData !== false;
+    // 默认关闭引擎自动更新，改为通过后端数据接口或手动设置
+    this.useEngineData = settings.xixiUseEngineData === true; // 默认 false，需要显式开启
+    this.manualDValueSet = false; // 标记是否手动设置了 D 值
     
     // 视觉参数
     this.visualParams = { size: 0, opacity: 0, turbidity: 0 };
@@ -79,8 +81,8 @@ class AttentionUI {
       this.colorTransitionStartTime = Date.now();
     }
     
-    // 从 Engine 数据更新 D 值
-    if (this.xixiEnabled && !this.mockMode && this.useEngineData) {
+    // 从 Engine 数据更新 D 值（仅在未手动设置时）
+    if (this.xixiEnabled && !this.mockMode && this.useEngineData && !this.manualDValueSet) {
       const D = this.calculateDFromEngine(data);
       this.setTurbulence(D);
     }
@@ -443,13 +445,34 @@ class AttentionUI {
         }
       }
       
-      if (this.D_raw < 0.1) {
-        this.D_raw = 0.4;
-        console.log('[Xixi] D 值过小，设置为最小可见值: 0.4');
+      // 不再强制设置最小 D 值，允许后端数据接口设置任意值（包括 0）
+      // 如果 D 值未设置（为 0 或 undefined），才使用默认值
+      // 但只在真正需要显示时才设置，避免自动触发状态切换
+      if (this.D_raw === undefined || this.D_raw === null) {
+        // 如果 D 值完全未设置，使用默认值 0.5（但不会自动触发状态切换）
+        this.D_raw = 0.5;
+        this.D_smooth = 0.5;
+        console.log('[Xixi] D 值未设置，使用默认值: 0.5（等待后端数据接口设置）');
+        // 同步到 widget，但不触发状态切换（因为这是初始化默认值）
+        if (this.xixiWidget) {
+          this.xixiWidget.D_raw = 0.5;
+          this.xixiWidget.D_smooth = 0.5;
+        }
+      } else if (this.D_raw === 0 && !this.useEngineData) {
+        // 如果 D 值为 0 且未使用引擎数据，保持为 0，等待后端设置
+        this.D_smooth = 0;
+        console.log('[Xixi] D 值为 0，等待后端数据接口设置');
+        if (this.xixiWidget) {
+          this.xixiWidget.D_raw = 0;
+          this.xixiWidget.D_smooth = 0;
+        }
+      } else {
+        // 如果 D 值已设置（通过引擎或其他方式），正常同步
+        this.D_smooth = this.D_raw;
+        if (this.xixiWidget) {
+          this.xixiWidget.setTurbulence(this.D_raw);
+        }
       }
-      
-      this.D_smooth = this.D_raw;
-      this.xixiWidget.setTurbulence(this.D_raw);
       
       setTimeout(() => {
         if (this.xixiWidget) {
@@ -601,6 +624,9 @@ class AttentionUI {
       D = 0;
     }
     this.D_raw = Math.max(0, Math.min(1, D));
+    
+    // 标记为手动设置，阻止引擎自动覆盖
+    this.manualDValueSet = true;
     
     if (this.xixiWidget?.setTurbulence) {
       this.xixiWidget.setTurbulence(D);

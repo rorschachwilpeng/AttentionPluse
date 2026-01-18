@@ -22,9 +22,9 @@ class XixiPNGWidget {
     // 阶段 4：支持所有状态
     this.enabledStates = config.enabledStates || ['baseline', 'calm', 'restless'];
     
-    // D 值状态
-    this.D_raw = 0.4;
-    this.D_smooth = 0.4;
+    // D 值状态（初始值设为 0.5，等待后端数据接口设置）
+    this.D_raw = 0.5;
+    this.D_smooth = 0.5;
     this.D_smoothAlpha = 0.1;
     
     // 初始化模块
@@ -89,10 +89,11 @@ class XixiPNGWidget {
       // 4. 设置初始状态（应用开发阶段限制）
       console.log('[XixiPNGWidget] 步骤 4: 设置初始状态');
       
-      // 确保 D_smooth 有初始值
+      // 确保 D_smooth 有初始值（使用 0.5 作为默认值，等待后端数据接口设置）
       if (typeof this.D_smooth !== 'number' || isNaN(this.D_smooth)) {
         this.D_smooth = 0.5;
         this.D_raw = 0.5;
+        console.log('[XixiPNGWidget] D 值无效，使用默认值: 0.5（等待后端数据接口设置）');
       }
       
       let initialState = this.stateManager.getState(this.D_smooth);
@@ -611,7 +612,12 @@ class XixiPNGWidget {
    * @param {number} D - D 值 (0-1)
    */
   setTurbulence(D) {
+    // 直接设置 D 值，不进行平滑处理（由平滑函数负责）
     this.D_raw = Math.max(0, Math.min(1, D));
+    
+    // 立即同步 D_smooth，避免平滑算法导致延迟切换
+    // 但保留平滑机制，用于后续的细微调整
+    this.D_smooth = this.D_raw;
     
     // 如果已初始化，检查状态变化
     if (this.isInitialized) {
@@ -668,8 +674,16 @@ class XixiPNGWidget {
       return;
     }
 
-    // 平滑 D 值
-    this.smoothDValue(deltaTime);
+    // 平滑 D 值（但只在 D_raw 不为 0 时平滑，避免从 0 平滑到默认值）
+    // 如果 D_raw 为 0，说明等待后端设置，不进行平滑
+    if (this.D_raw !== 0) {
+      this.smoothDValue(deltaTime);
+    }
+
+    // 检查状态变化（如果 D 值为 0，不进行状态检查，避免切换到 baseline）
+    if (this.D_raw === 0 && this.D_smooth === 0) {
+      return; // 等待后端数据接口设置 D 值
+    }
 
     // 检查状态变化
     let newState = this.stateManager.getState(this.D_smooth);
