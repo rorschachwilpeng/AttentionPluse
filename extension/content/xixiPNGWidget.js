@@ -85,7 +85,6 @@ class XixiPNGWidget {
       this.baselineAnimation = new XixiBaselineAnimation(this);
       this.calmAnimation = new XixiCalmAnimation(this);
       this.restlessAnimation = new XixiRestlessAnimation(this);
-      this.calmAnimation = new XixiCalmAnimation(this);
       
       // 4. 设置初始状态（应用开发阶段限制）
       console.log('[XixiPNGWidget] 步骤 4: 设置初始状态');
@@ -178,6 +177,13 @@ class XixiPNGWidget {
    * 创建 DOM 结构
    */
   createDOM() {
+    // 关键修复：先清理容器中所有现有的 img 元素，避免重复创建
+    const existingImgs = this.container.querySelectorAll('img');
+    if (existingImgs.length > 0) {
+      console.warn(`[XixiPNGWidget] 发现容器中有 ${existingImgs.length} 个 img 元素，正在清理...`);
+      existingImgs.forEach(img => img.remove());
+    }
+    
     // 创建图片元素
     this.imgElement = document.createElement('img');
     this.imgElement.style.cssText = `
@@ -263,6 +269,14 @@ class XixiPNGWidget {
     
     // 如果状态未变化且图片已设置，跳过切换
     if (this.currentState === state && this.imgElement && this.imgElement.src && this.imgElement.src !== '' && !this.imgElement.src.endsWith('undefined')) {
+      // 关键补丁：确保同一状态下动画仍然启动
+      if (state === 'baseline' && this.baselineAnimation && !this.baselineAnimation.isActive) {
+        this.baselineAnimation.start();
+      } else if (state === 'calm' && this.calmAnimation && !this.calmAnimation.isActive) {
+        this.calmAnimation.start();
+      } else if (state === 'restless' && this.restlessAnimation && !this.restlessAnimation.isActive) {
+        this.restlessAnimation.start();
+      }
       console.log(`  - 状态未变化（当前: ${this.currentState}）且图片已设置，跳过切换`);
       return;
     }
@@ -273,15 +287,17 @@ class XixiPNGWidget {
       console.log(`  - 切换状态: ${this.currentState} → ${state}`);
     }
     
-    // 停止当前状态的动画
-    if (this.baselineAnimation && this.baselineAnimation.isActive) {
-      this.baselineAnimation.stop();
-    }
-    if (this.calmAnimation && this.calmAnimation.isActive) {
-      this.calmAnimation.stop();
-    }
-    if (this.restlessAnimation && this.restlessAnimation.isActive) {
-      this.restlessAnimation.stop();
+    // 停止当前状态的动画（仅在状态真正改变时）
+    if (this.currentState !== state) {
+      if (this.baselineAnimation && this.baselineAnimation.isActive) {
+        this.baselineAnimation.stop();
+      }
+      if (this.calmAnimation && this.calmAnimation.isActive) {
+        this.calmAnimation.stop();
+      }
+      if (this.restlessAnimation && this.restlessAnimation.isActive) {
+        this.restlessAnimation.stop();
+      }
     }
     
     // 获取该状态的图片
@@ -684,10 +700,20 @@ class XixiPNGWidget {
 
     // 更新状态动画
     if (this.currentState === 'baseline' && this.baselineAnimation) {
+      if (!this.baselineAnimation.isActive) {
+        // 防止状态已就位但动画未启动，导致图片不切换
+        this.baselineAnimation.start();
+      }
       this.baselineAnimation.update(deltaTime || 16.67);
     } else if (this.currentState === 'calm' && this.calmAnimation) {
+      if (!this.calmAnimation.isActive) {
+        this.calmAnimation.start();
+      }
       this.calmAnimation.update(deltaTime || 16.67);
     } else if (this.currentState === 'restless' && this.restlessAnimation) {
+      if (!this.restlessAnimation.isActive) {
+        this.restlessAnimation.start();
+      }
       this.restlessAnimation.update(deltaTime || 16.67);
     }
   }

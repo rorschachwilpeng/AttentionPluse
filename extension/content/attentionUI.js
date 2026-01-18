@@ -797,6 +797,69 @@ class AttentionUI {
    * 诊断图片显示问题
    * 专门用于检查为什么图片不显示
    */
+  /**
+   * 诊断 DOM 结构（检查容器和图片元素的关系）
+   */
+  diagnoseDOMStructure() {
+    console.log('%c========== DOM 结构诊断 ==========', 'color: #667eea; font-weight: bold; font-size: 16px;');
+    
+    // 1. 检查容器
+    const container = document.getElementById('xixi-widget');
+    if (!container) {
+      console.error('✗ 容器 #xixi-widget 不存在');
+      return;
+    }
+    
+    console.log('✓ 容器存在');
+    console.log('  容器 ID:', container.id);
+    console.log('  容器子元素数量:', container.children.length);
+    console.log('  容器 innerHTML 长度:', container.innerHTML.length);
+    
+    // 2. 检查所有子元素
+    console.log('\n容器内的所有子元素:');
+    Array.from(container.children).forEach((child, index) => {
+      console.log(`  [${index}]`, {
+        tagName: child.tagName,
+        id: child.id || '无',
+        className: child.className || '无',
+        src: child.src ? child.src.substring(child.src.lastIndexOf('/') + 1) : '无',
+        isImg: child.tagName === 'IMG'
+      });
+    });
+    
+    // 3. 检查 Widget 中的 imgElement
+    if (this.xixiWidget && this.xixiWidget.imgElement) {
+      const widgetImg = this.xixiWidget.imgElement;
+      console.log('\nWidget 中的 imgElement:');
+      console.log('  - 存在:', !!widgetImg);
+      console.log('  - src:', widgetImg.src ? widgetImg.src.substring(widgetImg.src.lastIndexOf('/') + 1) : '空');
+      console.log('  - 是否在容器中:', container.contains(widgetImg));
+      console.log('  - 是否等于 DOM 中的 img:', widgetImg === container.querySelector('img'));
+    }
+    
+    // 4. 检查是否有多个 img 元素
+    const allImgs = container.querySelectorAll('img');
+    console.log(`\n容器中共有 ${allImgs.length} 个 img 元素:`);
+    allImgs.forEach((img, index) => {
+      console.log(`  [${index}]`, {
+        src: img.src ? img.src.substring(img.src.lastIndexOf('/') + 1) : '空',
+        isWidgetImg: this.xixiWidget && img === this.xixiWidget.imgElement,
+        naturalWidth: img.naturalWidth,
+        naturalHeight: img.naturalHeight
+      });
+    });
+    
+    // 5. 检查是否有元素被隐藏或覆盖
+    const visibleImgs = Array.from(allImgs).filter(img => {
+      const style = window.getComputedStyle(img);
+      return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+    });
+    console.log(`\n可见的 img 元素数量: ${visibleImgs.length}`);
+    if (visibleImgs.length !== allImgs.length) {
+      console.warn('⚠️ 有 img 元素被隐藏！');
+    }
+  }
+
   diagnoseImageDisplay() {
     console.log('%c========== 图片显示诊断 ==========', 'color: #667eea; font-weight: bold; font-size: 16px;');
     
