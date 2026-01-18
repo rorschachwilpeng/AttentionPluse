@@ -115,6 +115,7 @@ class AttentionEngine {
     this.onUpdateCallbacks = [];
     this.completeRecords = []; // 存储完整历史记录
     this.isDetailActive = false; // 新增：标记当前是否正在详情页活跃计时
+    this.lastTag = null; // 新增：存储当前活跃页面的标签信息
   }
 
   generateSessionId() {
@@ -141,6 +142,7 @@ class AttentionEngine {
       const completeRecord = createCompleteRecord(baseRecord);
       this.completeRecords.push(completeRecord);
       this.isDetailActive = true; // 开启计时标志
+      this.lastTag = completeRecord; // 存储当前标签供 UI 使用
       
       this.timeWindow.addRecord(completeRecord);
       this.statsWindow.addRecord(completeRecord); // 同时加入5分钟统计窗口
@@ -222,6 +224,7 @@ class AttentionEngine {
   stopTracking() {
     this.finalizeLastRecord();
     this.isDetailActive = false;
+    this.lastTag = null;
   }
 
   finalizeLastRecord() {
@@ -266,6 +269,70 @@ class AttentionEngine {
     })).sort((a, b) => b.stayTime - a.stayTime);
 
     return sortedStats;
+  }
+
+  /**
+   * 接口方法：获取指定时间窗口内的统计信息
+   * @param {number} windowMs 时间窗口（毫秒），默认 5 分钟
+   */
+  getRecentBehaviorStats(windowMs = 300000) {
+    const now = Date.now();
+    const startTimeToken = now - windowMs;
+    
+    // 过滤出最近 windowMs 内的记录
+    const recentRecords = this.completeRecords.filter(r => {
+      // 记录的完成时间应该在窗口内
+      const recordEndTime = (r.timestamp || now);
+      return recordEndTime > startTimeToken;
+    });
+
+    const tagStats = {};
+    let totalPosts = recentRecords.length;
+    let totalStayTime = 0;
+
+    recentRecords.forEach(r => {
+      const tagName = r.tagName || r.tag || '未知';
+      if (!tagStats[tagName]) {
+        tagStats[tagName] = { count: 0, stayTime: 0 };
+      }
+      tagStats[tagName].count += 1;
+      
+      // 如果是当前正在活跃的记录，使用实时计算的时间，而不是记录时快照的时间
+      let stay = r.stayTime || 0;
+      if (this.isDetailActive && r === this.lastTag) {
+        stay = this.getCurrentPageStayTime();
+      }
+      
+      tagStats[tagName].stayTime += stay;
+      totalStayTime += stay;
+    });
+
+    // 如果当前正在看某篇笔记，且它还没被 addRecord (即不在 recentRecords 中)
+    if (this.isDetailActive && this.lastTag && !recentRecords.includes(this.lastTag)) {
+      const currentTagName = this.lastTag.tagName || this.lastTag.tag || '未知';
+      const currentStay = this.getCurrentPageStayTime();
+      
+      if (!tagStats[currentTagName]) {
+        tagStats[currentTagName] = { count: 0, stayTime: 0 };
+      }
+      tagStats[currentTagName].count += 1;
+      tagStats[currentTagName].stayTime += currentStay;
+      totalPosts += 1;
+      totalStayTime += currentStay;
+    }
+
+    return {
+      windowMs,
+      totalPosts,
+      totalStayTime,
+      tagStats, // 按标签聚合的对象
+      // 转换为数组格式方便排序展示
+      sortedTags: Object.keys(tagStats).map(name => ({
+        name,
+        count: tagStats[name].count,
+        stayTime: tagStats[name].stayTime
+      })).sort((a, b) => b.stayTime - a.stayTime)
+    };
   }
 
   getStatus() {

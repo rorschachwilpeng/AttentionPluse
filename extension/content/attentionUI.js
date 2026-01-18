@@ -23,6 +23,7 @@ class AttentionUI {
     console.log(`[Xixi] 初始化状态: xixiEnabled=${this.xixiEnabled}`);
     this.xixiContainer = null;
     this.xixiWidget = null;
+    this.xixiPositionFixed = false; // 标记位置是否已固定
     this.xixiCanvas = null; // 保留用于向后兼容（已废弃）
     this.xixiAnimationId = null; // 保留用于向后兼容（已废弃）
     this.xixiStartTime = null; // 保留用于向后兼容（已废弃）
@@ -70,6 +71,45 @@ class AttentionUI {
     if (this.xixiEnabled) {
       this.initXixiWidget();
     }
+
+    // 启动 UI 心跳，确保实时更新浏览时长和统计数据
+    this.startUIHeartbeat();
+  }
+
+  startUIHeartbeat() {
+    if (this.uiHeartbeatId) clearInterval(this.uiHeartbeatId);
+    this.uiHeartbeatId = setInterval(() => {
+      // 1. 如果开启了 Xixi 且正在使用引擎数据，则每秒同步一次 D 值（处理停留时长影响）
+      if (this.xixiEnabled && this.useEngineData && !this.mockMode && !this.manualDValueSet) {
+        const engineStatus = {
+          ...this.engine.getStatus(),
+          stats: this.engine.getRecentStats()
+        };
+        const D = this.calculateDFromEngine(engineStatus);
+        this.setTurbulence(D, false);
+      }
+
+      // 2. 如果调试面板开启，则刷新面板内容
+      if (this.settings.debug) {
+        this.updateDebugInfo();
+      }
+
+      // 3. 定位对齐重试机制 (仅在位置未固定时执行)
+      if (this.xixiEnabled && this.xixiContainer && !this.xixiPositionFixed) {
+        const success = this.adjustWidgetPosition();
+        if (success) {
+          this.xixiPositionFixed = true;
+          console.log('[Xixi] 位置已成功固定，停止监控 Logo 位置');
+        }
+      }
+    }, 1000);
+  }
+
+  stopUIHeartbeat() {
+    if (this.uiHeartbeatId) {
+      clearInterval(this.uiHeartbeatId);
+      this.uiHeartbeatId = null;
+    }
   }
 
   onEngineUpdate(data) {
@@ -84,7 +124,7 @@ class AttentionUI {
     // 从 Engine 数据更新 D 值（仅在未手动设置时）
     if (this.xixiEnabled && !this.mockMode && this.useEngineData && !this.manualDValueSet) {
       const D = this.calculateDFromEngine(data);
-      this.setTurbulence(D);
+      this.setTurbulence(D, false); // 自动更新，不标记为手动
     }
     
     // 如果开启调试，刷新数据面板
@@ -122,71 +162,54 @@ class AttentionUI {
   updateDebugInfo(debugDiv = null) {
     if (!debugDiv) debugDiv = document.getElementById('attentionPulse-debug');
     if (!debugDiv) return;
+    if (!this.engine) return;
 
     const stats = this.engine.getStatus();
-    const content = window.attentionPulseContentExtractor?.getCurrentContent() || null;
-    const tagInfo = window.clickedCardContent || {};
-    const currentTagName = tagInfo.tagName || '探测中...';
-    const hashtags = tagInfo.hashtags || [];
+    const recentStats = this.engine.getRecentBehaviorStats ? this.engine.getRecentBehaviorStats(300000) : { sortedTags: [], totalStayTime: 0, totalPosts: 0 };
+    const sessionStats = recentStats.sortedTags || [];
+    
+    let currentTagName = '正在浏览列表...';
+    if (this.engine.isDetailActive) {
+      const engineTag = this.engine.lastTag;
+      const tagInfo = window.clickedCardContent || {};
+      // 优先从 engine 获取已被分析出的标签，其次是点击缓存，最后是分析中
+      currentTagName = (engineTag && (engineTag.tagName || engineTag.tag)) || tagInfo.tagName || '分析中...';
+    }
 
-    const xixiData = {
-      D_raw: this.D_raw || 0,
-      D_smooth: this.D_smooth || 0,
-      smoothAlpha: this.D_smoothAlpha || 0.1,
-      size: this.visualParams?.size || 0,
-      opacity: this.visualParams?.opacity || 0,
-      turbidity: this.visualParams?.turbidity || 0
-    };
-
-    const dDifference = Math.abs(xixiData.D_raw - xixiData.D_smooth);
     const debugStyle = (bg, border) => `background: ${bg}; padding: 10px; border-radius: 8px; border: 1px solid ${border}; margin-bottom: 10px;`;
     const rowStyle = (mb = 6) => `margin-bottom: ${mb}px; display: flex; justify-content: space-between;`;
 
-    const contentHTML = `
-      <div style="font-weight: 600; margin-bottom: 12px; color: #fff; font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
-        <span>AttentionPulse <span style="color: #667eea;">Xixi</span></span>
-        <span style="font-size: 10px; color: rgba(255, 255, 255, 0.4); font-weight: 400;">BETA V1.2</span>
+    debugDiv.innerHTML = `
+      <div style="font-weight: 600; margin-bottom: 12px; color: #fff; font-size: 13px;">
+        AttentionPulse <span style="color: #667eea;">Xixi</span>
       </div>
-      
       <div style="${debugStyle('rgba(102, 126, 234, 0.15)', 'rgba(102, 126, 234, 0.3)')}">
-        <div style="color: #667eea; font-weight: 600; font-size: 10px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">D 值 (注意力扰动指数)</div>
-        <div style="${rowStyle()}"><span style="color: #888;">D_raw:</span><span style="color: #fff; font-weight: bold;">${(xixiData.D_raw * 100).toFixed(1)}%</span></div>
-        <div style="${rowStyle()}"><span style="color: #888;">D_smooth:</span><span style="color: #667eea; font-weight: bold;">${(xixiData.D_smooth * 100).toFixed(1)}%</span></div>
-        <div style="${rowStyle(0)}"><span style="color: #888;">smoothAlpha:</span><span style="color: #fff;">${xixiData.smoothAlpha.toFixed(3)}</span></div>
-        ${dDifference > 0.01 ? `<div style="margin-top: 4px; font-size: 9px; color: #888;">差异: ${(dDifference * 100).toFixed(1)}%</div>` : ''}
+        <div style="${rowStyle()}"><span style="color: #888;">D_smooth:</span><span style="color: #667eea; font-weight: bold;">${(this.D_smooth * 100).toFixed(1)}%</span></div>
       </div>
-
-      <div style="${debugStyle('rgba(30, 30, 30, 0.4)', 'rgba(255, 255, 255, 0.05)')}">
-        <div style="color: #888; font-weight: 600; font-size: 10px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">视觉参数</div>
-        <div style="${rowStyle()}"><span style="color: #888;">尺寸 (Size):</span><span style="color: #fff;">${xixiData.size.toFixed(1)}px</span></div>
-        <div style="${rowStyle()}"><span style="color: #888;">透明度 (Opacity):</span><span style="color: #fff;">${(xixiData.opacity * 100).toFixed(1)}%</span></div>
-        <div style="${rowStyle(0)}"><span style="color: #888;">浑浊度 (Turbidity):</span><span style="color: #fff;">${(xixiData.turbidity * 100).toFixed(1)}%</span></div>
-      </div>
-
-      <div style="${debugStyle('rgba(30, 30, 30, 0.4)', 'rgba(255, 255, 255, 0.05)')}">
-        <div style="color: #888; font-weight: 600; font-size: 10px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">引擎数据 (参考)</div>
-        <div style="${rowStyle()}"><span style="color: #888;">专注度 (Focus):</span><span style="color: ${getFocusColor(stats.focusLevel)}; font-weight: bold;">${(stats.focusLevel * 100).toFixed(0)}%</span></div>
-        <div style="${rowStyle()}"><span style="color: #888;">发散度 (Diversity):</span><span style="color: #fff;">${(stats.diversity * 100).toFixed(0)}%</span></div>
-        <div style="${rowStyle(0)}"><span style="color: #888;">当前标签:</span><span style="color: #fff;">${currentTagName}</span></div>
-      </div>
-
-      ${hashtags.length > 0 ? `<div style="margin: 10px 0; font-size: 10px; color: #666; display: flex; flex-wrap: wrap; gap: 4px;">
-        ${hashtags.slice(0, 4).map(h => `<span style="background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px;">#${h}</span>`).join('')}
-      </div>` : ''}
-
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 10px;">
-        <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 4px;">
-          <div style="color: #555; margin-bottom: 2px;">点击:</div>
-          <div style="color: #fff;">${stats.actions.clicks}</div>
+      <div style="${debugStyle('rgba(30,30,30,0.4)', 'rgba(255,255,255,0.05)')}">
+        <div style="${rowStyle()}">
+          <span style="color: #888;">当前标签:</span>
+          <span style="color: #fff; font-weight: bold;">${currentTagName}</span>
         </div>
-        <div style="background: rgba(255,255,255,0.02); padding: 6px; border-radius: 4px;">
-          <div style="color: #555; margin-bottom: 2px;">滚动:</div>
-          <div style="color: #fff;">${stats.actions.scrolls}</div>
+        <div style="${rowStyle(0)}">
+          <span style="color: #888;">阅读时长:</span>
+          <span style="color: #fff; font-family: monospace;">${(this.engine.getCurrentPageStayTime() / 1000).toFixed(1)}s</span>
+        </div>
+      </div>
+      <div style="${debugStyle('rgba(0, 200, 255, 0.05)', 'rgba(0, 200, 255, 0.2)')}">
+        <div style="font-size: 10px; color: #00c8ff; margin-bottom: 8px;">5min 标签聚类统计</div>
+        ${sessionStats.slice(0, 5).map(item => `
+          <div style="${rowStyle(4)}">
+            <span style="color: #fff;">${item.name}</span>
+            <span style="color: #888;">${item.count}篇 / ${(item.stayTime / 1000).toFixed(0)}s</span>
+          </div>
+        `).join('')}
+        <div style="margin-top: 8px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.05); color: #888; font-size: 10px; display: flex; justify-content: space-between;">
+           <span>总篇数: ${recentStats.totalPosts}</span>
+           <span>总时长: ${(recentStats.totalStayTime / 1000).toFixed(0)}s</span>
         </div>
       </div>
     `;
-
-    debugDiv.innerHTML = contentHTML;
   }
 
   startPulseAnimation(canvas) {
@@ -358,67 +381,14 @@ class AttentionUI {
     const config = this.xixiConfig;
     const widgetSize = config.sizeMax * config.scale;
     
-    // 尝试定位到搜索框左侧
-    const searchBoxPosition = this.findSearchBoxPosition();
-    
-    if (searchBoxPosition) {
-      let left = searchBoxPosition.left - widgetSize - 12;
-      let top = searchBoxPosition.top;
-      
-      const viewportCheck = this.checkViewportBounds(left, top, widgetSize, widgetSize);
-      if (!viewportCheck.inViewport) {
-        console.warn(`[Xixi] 计算位置超出视口: ${viewportCheck.reason}，自动修正`);
-        left = viewportCheck.adjusted.left;
-        top = viewportCheck.adjusted.top;
-      }
-      
-      this.setContainerBaseStyles(this.xixiContainer, widgetSize);
-      this.xixiContainer.style.top = `${top}px`;
-      this.xixiContainer.style.left = `${left}px`;
-      this.xixiContainer.style.right = 'auto';
-      this.xixiContainer.style.bottom = 'auto';
-      
-      setTimeout(() => {
-        const actualRect = this.xixiContainer.getBoundingClientRect();
-        const finalViewportCheck = this.checkViewportBounds(
-          actualRect.left, actualRect.top, actualRect.width, actualRect.height
-        );
-        if (!finalViewportCheck.inViewport) {
-          console.warn(`[Xixi] 实际位置仍然超出视口，进行二次修正`);
-          this.xixiContainer.style.left = `${finalViewportCheck.adjusted.left}px`;
-          this.xixiContainer.style.top = `${finalViewportCheck.adjusted.top}px`;
-        }
-      }, 100);
-    } else {
-      // 使用默认位置
-      let top = config.offsetY, left = config.offsetX, right = 'auto', bottom = 'auto';
-      
-      if (config.position === 'top-right') {
-        top = config.offsetY; left = 'auto'; right = config.offsetX;
-      } else if (config.position === 'bottom-left') {
-        top = 'auto'; left = config.offsetX; bottom = config.offsetY;
-      } else if (config.position === 'bottom-right') {
-        top = 'auto'; left = 'auto'; right = config.offsetX; bottom = config.offsetY;
-      }
-      
-      this.setContainerBaseStyles(this.xixiContainer, widgetSize);
-      this.xixiContainer.style.top = `${top}px`;
-      this.xixiContainer.style.left = `${left}px`;
-      this.xixiContainer.style.right = right;
-      this.xixiContainer.style.bottom = bottom;
-      
-      console.log(`[Xixi] 使用默认位置: left=${left}px, top=${top}px`);
-    }
-    
+    // 初始化容器样式（定位会在 adjustWidgetPosition 中处理）
+    this.setContainerBaseStyles(this.xixiContainer, widgetSize);
     this.xixiContainer.style.opacity = '0';
+    this.xixiContainer.style.visibility = 'hidden';
+    this.xixiContainer.style.display = 'block';
     this.xixiContainer.style.transition = 'opacity 0.3s ease-in-out';
     
     document.body.appendChild(this.xixiContainer);
-    
-    if (document.body.lastChild !== this.xixiContainer) {
-      document.body.removeChild(this.xixiContainer);
-      document.body.appendChild(this.xixiContainer);
-    }
     
     try {
       this.xixiWidget = new XixiPNGWidget(this.xixiContainer, {
@@ -485,7 +455,9 @@ class AttentionUI {
       this.xixiContainer.style.display = 'block';
       
       setTimeout(() => {
-        this.adjustWidgetPosition();
+        if (this.adjustWidgetPosition()) {
+          this.xixiPositionFixed = true;
+        }
       }, 200);
       
       console.log(`[Xixi] PNG Widget 已初始化 - D=${this.D_raw.toFixed(2)}`);
@@ -560,17 +532,64 @@ class AttentionUI {
     return null;
   }
 
+  findHeaderLogoPosition() {
+    const logoSelectors = [
+      'header .logo',             // 常见类名
+      '.main-header img',        // 头部图片
+      'a[href="/"] img',         // 链接到首页的图片
+      'img[class*="logo"]',      // 包含 logo 的类名
+      'img[src*="logo"]',        // src 包含 logo
+      '.header-container img'     // 容器内的图片
+    ];
+    
+    const result = this.findElementBySelectors(logoSelectors, (rect) => {
+      // 检查是否在页面顶部附近
+      return rect.width > 0 && rect.height > 0 && rect.top < 100;
+    });
+    
+    if (result) {
+      console.log(`[Xixi] 找到 Header Logo`, result.rect);
+      return result.rect;
+    }
+    
+    console.warn('[Xixi] 未找到 Header Logo');
+    return null;
+  }
+
   adjustWidgetPosition() {
-    if (!this.xixiContainer) return;
+    if (!this.xixiContainer) return false;
 
-    const homeButtonPosition = this.findHomeButtonPosition();
-    if (!homeButtonPosition) return;
-
+    // 优先寻找 Header Logo 位置
+    const logoPos = this.findHeaderLogoPosition();
     const config = this.xixiConfig;
     const widgetSize = config.sizeMax * config.scale;
     
-    let left = homeButtonPosition.left + (homeButtonPosition.width - widgetSize) / 2;
-    let top = homeButtonPosition.bottom + 8;
+    let left, top;
+    let foundAnchor = false;
+
+    if (logoPos) {
+      // 放置在 Logo 右侧，保持 15px 间距
+      left = logoPos.right + 15;
+      // 垂直居中对齐 Logo
+      top = logoPos.top + (logoPos.height - widgetSize) / 2;
+      
+      console.log(`[Xixi] 定位至 Logo 右侧: left=${left}, top=${top}`);
+      foundAnchor = true;
+    } else {
+      // 备选方案：之前的 Home 按钮逻辑
+      const homeButtonPosition = this.findHomeButtonPosition();
+      if (homeButtonPosition) {
+        left = homeButtonPosition.left + (homeButtonPosition.width - widgetSize) / 2;
+        top = homeButtonPosition.bottom + 8;
+        console.log(`[Xixi] 定位至 Home 按钮下方: left=${left}, top=${top}`);
+        foundAnchor = true;
+      } else {
+        // 最终兜底：配置的默认位置
+        top = config.offsetY; 
+        left = config.offsetX;
+        // 注意：这里由于没找到锚点，不视为 foundAnchor = true，以便下次心跳继续重试
+      }
+    }
     
     const viewportCheck = this.checkViewportBounds(left, top, widgetSize, widgetSize);
     if (!viewportCheck.inViewport) {
@@ -595,6 +614,8 @@ class AttentionUI {
         this.xixiContainer.style.top = `${finalViewportCheck.adjusted.top}px`;
       }
     }, 50);
+
+    return foundAnchor;
   }
 
   destroyXixiWidget() {
@@ -618,15 +639,17 @@ class AttentionUI {
     console.log('[Xixi] Widget 已销毁');
   }
 
-  setTurbulence(D) {
+  setTurbulence(D, isManual = true) {
     if (typeof D !== 'number' || isNaN(D)) {
       console.warn('[Xixi] setTurbulence: 无效的 D 值，使用 0');
       D = 0;
     }
     this.D_raw = Math.max(0, Math.min(1, D));
     
-    // 标记为手动设置，阻止引擎自动覆盖
-    this.manualDValueSet = true;
+    // 如果是显式手动设置（来自 mock 或控制台），标记为手动设置，阻止引擎自动覆盖
+    if (isManual) {
+      this.manualDValueSet = true;
+    }
     
     if (this.xixiWidget?.setTurbulence) {
       this.xixiWidget.setTurbulence(D);
@@ -723,10 +746,37 @@ class AttentionUI {
   }
 
   calculateDFromEngine(engineData) {
-    if (!engineData) return 0;
-    const focusLevel = engineData.focusLevel || 0;
-    const diversity = engineData.diversity || 0;
-    const D = (1 - focusLevel) * 0.6 + diversity * 0.4;
+    if (!engineData) return 0.5;
+    
+    // 获取 5 分钟统计数据
+    const stats = engineData.stats || {};
+    const totalCount = stats.totalCount || 0;
+    const topTagPercentage = parseFloat(stats.topTagPercentage || 0) / 100;
+    
+    // 1. 帖子切换频率：5分钟内看完10个帖子则视为高扰动 (Restless)
+    const switchScore = Math.min(1, totalCount / 10);
+    
+    // 2. 兴趣集中度：最高频标签占比越低，说明兴趣越分散 (High Disturbance)
+    const diversityScore = 1 - topTagPercentage;
+    
+    // 综合计算基础 D 值
+    let D = (switchScore * 0.6) + (diversityScore * 0.4);
+    
+    // 3. 当前页面停留：如果正在详情页且停留超过 45秒，强制降低 D 值进入冷静态 (Calm)
+    const isDetailActive = this.engine?.isDetailActive;
+    const stayTime = this.engine?.getCurrentPageStayTime ? this.engine.getCurrentPageStayTime() : 0;
+    
+    if (isDetailActive && stayTime > 45000) {
+      // 随着停留时间增加，D 值进一步下降
+      const reduction = Math.min(0.5, (stayTime - 45000) / 60000);
+      D = Math.max(0.2, D - reduction);
+    }
+    
+    // 4. 无行为降级：如果 5 分钟没看新帖子，D 值回归 baseline
+    if (totalCount === 0) {
+      D = 0.5;
+    }
+
     return Math.max(0, Math.min(1, D));
   }
 
@@ -1580,3 +1630,7 @@ class AttentionUI {
     console.log('\n%c========== 完成 ==========', 'color: #48bb78; font-weight: bold;');
   }
 }
+
+// 显式导出到全局作用域
+window.AttentionUI = AttentionUI;
+console.log('[AttentionPulse:UI] AttentionUI 类已加载并导出');

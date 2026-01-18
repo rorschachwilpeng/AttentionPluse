@@ -24,7 +24,7 @@
     size: 'medium',
     debug: false,
     xixiEnabled: true,  // 默认启用 Xixi widget
-    xixiUseEngineData: false  // 默认关闭引擎自动更新，改为通过后端数据接口或手动设置
+    xixiUseEngineData: true  // 默认开启引擎自动更新，实现数据驱动动画
   };
 
   // 3. 实例化核心类
@@ -58,53 +58,79 @@
       console.warn('[AttentionPulse:Main] 加载配置失败，使用默认值');
     }
 
-    if (!settings.enabled) return;
+    let ui = null;
+    let monitoringStarted = false;
 
-    // B. 初始化 UI
-    if (typeof AttentionUI === 'undefined') {
-      console.error('[AttentionPulse:Main] AttentionUI 未定义，无法启动界面');
-      return;
-    }
-    const ui = new AttentionUI(engine, settings);
-    window.attentionPulseUI = ui;
+    const startPluginComponents = () => {
+      if (!settings.enabled) return;
 
-    // C. 启动监控
-    if (typeof startContentMonitoring !== 'undefined') {
-      startContentMonitoring(engine, settings, ui);
-    }
-    if (typeof startInteractionMonitoring !== 'undefined') {
-      startInteractionMonitoring(engine, settings, ui);
-    }
+      // B. 初始化 UI
+      if (typeof AttentionUI === 'undefined') {
+        console.error('[AttentionPulse:Main] AttentionUI 未定义，无法启动界面');
+        return;
+      }
+      
+      if (!ui) {
+        ui = new AttentionUI(engine, settings);
+        window.attentionPulseUI = ui;
+      }
 
-    // D. 如果开启调试模式，显示面板
-    if (settings.debug) {
-      ui.showDebugInfo();
-    }
+      // C. 启动监控
+      if (!monitoringStarted) {
+        if (typeof startContentMonitoring !== 'undefined') {
+          startContentMonitoring(engine, settings, ui);
+        }
+        if (typeof startInteractionMonitoring !== 'undefined') {
+          startInteractionMonitoring(engine, settings, ui);
+        }
+        monitoringStarted = true;
+      }
 
-    console.log('%c[AttentionPulse:Main] ===== 初始化完成 =====', 'color: #48bb78; font-weight: bold;');
-    
+      // D. 如果开启调试模式，显示面板
+      if (settings.debug && ui) {
+        ui.showDebugInfo();
+      }
+    };
+
+    // 初始启动
+    startPluginComponents();
+
     // 消息监听器
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === 'SETTINGS_UPDATED') {
+        const oldEnabled = settings.enabled;
         const oldDebug = settings.debug;
         Object.assign(settings, message.settings);
         
         if (!settings.enabled) {
           const debugDiv = document.getElementById('attentionPulse-debug');
           if (debugDiv) debugDiv.remove();
-          ui.stopPulseAnimation();
-        } else {
-          if (settings.debug) {
-            ui.showDebugInfo();
-          } else if (oldDebug && !settings.debug) {
-            const debugDiv = document.getElementById('attentionPulse-debug');
-            if (debugDiv) debugDiv.remove();
+          if (ui) {
             ui.stopPulseAnimation();
+            ui.stopUIHeartbeat();
+          }
+        } else {
+          // 如果是从禁用变启用，重新初始化组件
+          if (!oldEnabled) {
+            startPluginComponents();
+          }
+          
+          if (ui) {
+            ui.startUIHeartbeat();
+            if (settings.debug) {
+              ui.showDebugInfo();
+            } else if (oldDebug && !settings.debug) {
+              const debugDiv = document.getElementById('attentionPulse-debug');
+              if (debugDiv) debugDiv.remove();
+              ui.stopPulseAnimation();
+            }
           }
         }
       }
       sendResponse({ success: true });
     });
+
+    console.log('%c[AttentionPulse:Main] ===== 初始化完成 =====', 'color: #48bb78; font-weight: bold;');
   }
 
   // 5. 启动
